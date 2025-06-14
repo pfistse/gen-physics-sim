@@ -1,0 +1,33 @@
+_target_: data.PhysicsDataModule
+data_path: /home/spfister/gen-physics-sim/data/128_inc
+
+# Loader
+batch_size: 32
+num_workers: 0
+conditioning_length: 2
+dimension: 2
+frame_size: [128, 64]
+
+# Dataset
+stride: 6 # 3 (sequence length) + 2 (stride)
+
+train_sim_selection: [10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40, 41, 42, 43, 44, 45, 46, 47, 48, 49, 50, 51, 52, 53, 54, 55, 56, 57, 58, 59, 60, 61, 62, 63, 64, 65, 66, 67, 68, 69, 70, 71, 72, 73, 74, 75, 76, 77, 78, 79, 80]
+test_sim_selection: [0, 2, 4, 6, 8, 82, 84, 86, 88, 90]
+
+train_frame_range: [800, 1300]
+test_frame_range: [1000, 1150]
+
+sim_fields: ["vel", "pres"]
+sim_params: ["rey"]
+
+# Normalization statistics
+field_mean:
+  vel: [0.444969, 0.000299]
+  pres: [0.000586]
+field_std:
+  vel: [0.206128, 0.206128]
+  pres: [0.003942]
+param_mean:
+  rey: [550.0]
+param_std:
+  rey: [262.678467]

@@ -1,0 +1,31 @@
+defaults:
+  - model: flow_matching
+  - tracking: wandb
+  - data: default
+  - logging: default
+  - evaluation: default
+  - _self_
+
+train: false
+test: true
+seed: 42
+
+ckpt_path: "/home/spfister/gen-physics-sim/results/2025-06-11/15-40-44/checkpoints/model-1349-0.0000.ckpt"
+
+trainer:
+  _target_: pytorch_lightning.Trainer
+  accelerator: "gpu"
+  devices: [0]
+  precision: 32
+  deterministic: true
+
+callbacks: {}
+
+hydra:
+  job:
+    chdir: true
+  run:
+    dir: results/${now:%Y-%m-%d}/${now:%H-%M-%S}
+  sweep:
+    dir: multirun/${now:%Y-%m-%d}/${now:%H-%M-%S}
+    subdir: ${hydra.job.num}

@@ -1,0 +1,36 @@
+_target_: models.consistency_model.ConsistencyModel
+
+# General model parameters
+dimension: 2
+data_size: [128, 64]
+conditioning_length: ${data.conditioning_length}
+sim_fields: ${data.sim_fields}
+sim_params: ${data.sim_params}
+
+# Consistency model parameters
+consistency_training: "ct"  # "ct" for Consistency Training, "cd" for Consistency Distillation
+teacher_model_path: null  # only needed for "cd"
+
+sigma_min: 0.01
+sigma_max: 20.0
+sigma_data: 0.5
+rho: 7.0
+ema_rate: 0.95
+num_steps: 40
+
+# Network configuration
+network:
+  _target_: models.components.unet.Unet
+  channels: 12  # 8 conditioning + 4 target channels
+  out_dim: 12
+  dim: 64
+  dim_mults: [1, 1, 1]
+  use_convnext: true
+  convnext_mult: 1
+
+# Optimization parameters
+lr: 1e-4
+weight_decay: 0.0
+
+# Logging configuration
+eval_config: ${evaluation}

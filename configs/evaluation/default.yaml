@@ -1,0 +1,19 @@
+
+video:
+  enabled: true
+  num_frames: 100
+  fps: 10
+  format: "mp4"
+
+# Used for both flow matching and consistency model
+num_steps_eval: 1
+
+metrics:
+  temp_deviation:
+    enabled: true
+    num_simulations: 5
+    num_time_steps: 60
+    start_frame: 1000
+
+# Each index corresponds to a channel. Use null to skip plotting that channel.
+channel_titles: ["vel_y", "vel_x", "press", null]
