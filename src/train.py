@@ -14,6 +14,7 @@ from pytorch_lightning import Callback, LightningDataModule, LightningModule, Tr
 from pytorch_lightning.loggers import Logger
 from omegaconf import DictConfig
 
+# Setup root directory to allow absolute imports
 rootutils.setup_root(__file__, indicator=".project-root", pythonpath=True)
 
 from utils.log import get_logger

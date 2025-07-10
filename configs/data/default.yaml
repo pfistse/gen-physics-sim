@@ -1,17 +1,91 @@
 _target_: data.PhysicsDataModule
-data_path: /home/spfister/gen-physics-sim/data/128_inc
+data_path: /path/to/data
 
 # Loader
-batch_size: 32
+batch_size: 15
 num_workers: 0
 conditioning_length: 2
+target_length: 2 # must be increased for models that do unrolling
 dimension: 2
 frame_size: [128, 64]
 
 # Dataset
 stride: 6 # 3 (sequence length) + 2 (stride)
 
-train_sim_selection: [10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40, 41, 42, 43, 44, 45, 46, 47, 48, 49, 50, 51, 52, 53, 54, 55, 56, 57, 58, 59, 60, 61, 62, 63, 64, 65, 66, 67, 68, 69, 70, 71, 72, 73, 74, 75, 76, 77, 78, 79, 80]
+train_sim_selection:
+  [
+    10,
+    11,
+    12,
+    13,
+    14,
+    15,
+    16,
+    17,
+    18,
+    19,
+    20,
+    21,
+    22,
+    23,
+    24,
+    25,
+    26,
+    27,
+    28,
+    29,
+    30,
+    31,
+    32,
+    33,
+    34,
+    35,
+    36,
+    37,
+    38,
+    39,
+    40,
+    41,
+    42,
+    43,
+    44,
+    45,
+    46,
+    47,
+    48,
+    49,
+    50,
+    51,
+    52,
+    53,
+    54,
+    55,
+    56,
+    57,
+    58,
+    59,
+    60,
+    61,
+    62,
+    63,
+    64,
+    65,
+    66,
+    67,
+    68,
+    69,
+    70,
+    71,
+    72,
+    73,
+    74,
+    75,
+    76,
+    77,
+    78,
+    79,
+    80,
+  ]
 test_sim_selection: [0, 2, 4, 6, 8, 82, 84, 86, 88, 90]
 
 train_frame_range: [800, 1300]

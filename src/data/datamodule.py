@@ -44,6 +44,7 @@ class PhysicsDataset(Dataset):
         param_mean: Dict[str, List[float]],
         param_std: Dict[str, List[float]],
         normalize: bool = True,
+        target_length: int = 1,
     ) -> None:
         super().__init__()
         self.root = Path(root)
@@ -53,6 +54,7 @@ class PhysicsDataset(Dataset):
         self.stride = stride
         self.sim_fields = sim_fields
         self.sim_params = sim_params
+        self.target_length = target_length
         self.field_mean = {
             k: np.asarray(v, dtype=np.float32) for k, v in field_mean.items()
         }
@@ -89,7 +91,7 @@ class PhysicsDataset(Dataset):
                 params = [0.0 for _ in self.sim_params]
             self.param_values[sim_folder] = np.array(params, dtype=np.float32)
 
-            max_start = end - (self.conditioning_length + 1)
+            max_start = end - (self.conditioning_length + self.target_length)
             for frame in range(start, max_start + 1, self.stride):
                 self.sequence_paths.append((str(sim_path), frame, sim_folder))
 
@@ -195,7 +197,7 @@ class PhysicsDataset(Dataset):
         loaded = self.load_sequence(
             sim_folder=folder,
             start_frame=start,
-            target_length=1,
+            target_length=self.target_length,
         )
 
         if loaded is None:
@@ -226,6 +228,7 @@ class PhysicsDataModule(pl.LightningDataModule):
         field_std: Optional[Dict[str, List[float]]] = None,
         param_mean: Optional[Dict[str, List[float]]] = None,
         param_std: Optional[Dict[str, List[float]]] = None,
+        target_length: int = 1,
     ) -> None:
         super().__init__()
         self.data_path = data_path
@@ -235,6 +238,7 @@ class PhysicsDataModule(pl.LightningDataModule):
         self.dimension = dimension
         self.frame_size = frame_size
         self.stride = stride
+        self.target_length = target_length
         self.train_sim_selection = train_sim_selection or []
         self.test_sim_selection = test_sim_selection or []
         self.train_frame_range = train_frame_range
@@ -280,6 +284,7 @@ class PhysicsDataModule(pl.LightningDataModule):
             self.param_mean,
             self.param_std,
             normalize=True,
+            target_length=self.target_length,
         )
 
         self.test_dataset = PhysicsDataset(
@@ -295,6 +300,7 @@ class PhysicsDataModule(pl.LightningDataModule):
             self.param_mean,
             self.param_std,
             normalize=True,
+            target_length=self.target_length,
         )
 
         self.test_sim_folders = test_folders

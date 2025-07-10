@@ -5,9 +5,11 @@ import sys
 from typing import Optional, Dict, Any
 import os
 
+# Define log levels
 VERBOSE = 15
 logging.addLevelName(VERBOSE, "VERBOSE")
 
+# Color codes for terminal output
 COLORS = {
     "RESET": "\033[0m",
     "RED": "\033[31m",
@@ -48,19 +50,24 @@ def setup_logger(
     logger = logging.getLogger(name)
     logger.setLevel(level)
     
+    # Remove existing handlers if any
     if logger.hasHandlers():
         logger.handlers.clear()
     
+    # Create console handler with colored output if enabled
     if console_output:
         console_handler = logging.StreamHandler(sys.stdout)
         console_handler.setLevel(level)
 
+        # Create formatter with time, level, and message
         console_format = "%(asctime)s | %(levelname)-8s | %(name)s | %(message)s"
         console_formatter = ColoredFormatter(console_format, datefmt="%Y-%m-%d %H:%M:%S")
         console_handler.setFormatter(console_formatter)
 
+        # Add console handler to logger
         logger.addHandler(console_handler)
     
+    # Add file handler if log_file is specified
     if log_file:
         os.makedirs(os.path.dirname(log_file), exist_ok=True)
         file_handler = logging.FileHandler(log_file)
@@ -72,12 +79,14 @@ def setup_logger(
     
     return logger
 
+# Create a default logger instance
 logger = setup_logger()
 
 def verbose(self, message, *args, **kwargs):
     """Log a message with VERBOSE level."""
     self.log(VERBOSE, message, *args, **kwargs)
 
+# Add verbose method to Logger class
 logging.Logger.verbose = verbose
 
 def get_logger(name: str) -> logging.Logger:
@@ -88,6 +97,7 @@ def set_global_level(level: int) -> None:
     """Set the global logging level."""
     logging.getLogger("gen-physics-sim").setLevel(level)
     
+    # Update all handlers
     for handler in logging.getLogger("gen-physics-sim").handlers:
         handler.setLevel(level)
 

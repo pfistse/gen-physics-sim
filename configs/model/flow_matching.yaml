@@ -8,12 +8,12 @@ sim_fields: ${data.sim_fields}
 sim_params: ${data.sim_params}
 
 # Flow matching parameters
-sigma_min: 0.001
+sigma_min: 0.001 # needs to be zero for time stability
 
 # Network configuration
 network:
   _target_: models.components.unet.Unet
-  channels: 12  # 8 conditioning + 4 target channels
+  channels: 12 # 8 conditioning + 4 target channels
   out_dim: 12
   dim: 64
   dim_mults: [1, 1, 1]
@@ -23,6 +23,9 @@ network:
 # Optimization parameters
 lr: 1e-4
 weight_decay: 0.0
+
+# Evaluation
+num_steps_eval: 20
 
 # Logging configuration
 eval_config: ${evaluation}

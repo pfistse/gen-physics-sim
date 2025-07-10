@@ -1,5 +1,5 @@
 defaults:
-  - model: flow_matching
+  - model: consistency_model
   - tracking: wandb
   - data: default
   - logging: default
@@ -7,16 +7,17 @@ defaults:
   - _self_
 
 train: true
-test: true  
+test: true
 seed: 42
 
 ckpt_path: null
 
 trainer:
   _target_: pytorch_lightning.Trainer
-  max_epochs: 1000
+  max_epochs: 3100
   accelerator: "gpu"
-  devices: [2]
+  strategy: "ddp"
+  devices: [1]
   precision: 32
   check_val_every_n_epoch: 10
   deterministic: true
