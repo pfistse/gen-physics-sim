@@ -289,34 +289,34 @@ class ConsistencyModel(pl.LightningModule):
 
     def generate_samples(
         self,
-        cond: torch.Tensor,
+        cond_seq: torch.Tensor,
         num_steps: int = 1,
         use_ema: bool = True,
         requires_grad: bool = False,
     ):
-        """Sample the next frame from ``cond``.
+        """Sample the next frame from ``cond_seq``.
 
-        cond: [B, S, C, H, W]
+        cond_seq: [B, S, C, H, W]
         return: [B, 1, C, H, W]
         """
         if self.dimension == 3:
             raise NotImplementedError("3D consistency model not implemented yet")
 
-        device = cond.device
+        device = cond_seq.device
 
         assert (
-            len(cond.shape) == 5
-        ), f"Expected tensor [B, S, C, H, W], got {cond.shape}"
+            len(cond_seq.shape) == 5
+        ), f"Expected tensor [B, S, C, H, W], got {cond_seq.shape}"
 
-        batch_size = cond.shape[0]
-        cond_seq_len = cond.shape[1]
+        batch_size = cond_seq.shape[0]
+        cond_seq_len = cond_seq.shape[1]
 
         # [B, S_cond, C, H, W] -> [B, S_cond*C, H, W]
-        cond = cond.view(
+        cond = cond_seq.view(
             batch_size,
-            cond_seq_len * cond.shape[2],
-            cond.shape[3],
-            cond.shape[4],
+            cond_seq_len * cond_seq.shape[2],
+            cond_seq.shape[3],
+            cond_seq.shape[4],
         )
 
         model_use_target = use_ema
@@ -327,8 +327,8 @@ class ConsistencyModel(pl.LightningModule):
                 x = torch.randn(
                     batch_size,
                     self.target_channels,
-                    cond.shape[3],
-                    cond.shape[4],
+                    cond_seq.shape[3],
+                    cond_seq.shape[4],
                     device=device,
                 )
                 sigma = torch.full((batch_size,), self.sigma_max, device=device)
@@ -345,8 +345,8 @@ class ConsistencyModel(pl.LightningModule):
                     torch.randn(
                         batch_size,
                         self.target_channels,
-                        cond.shape[3],
-                        cond.shape[4],
+                        cond_seq.shape[3],
+                        cond_seq.shape[4],
                         device=device,
                     )
                     * sigma

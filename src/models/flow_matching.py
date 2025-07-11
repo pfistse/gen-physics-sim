@@ -175,37 +175,37 @@ class FlowMatchingModel(pl.LightningModule):
 
     def generate_samples(
         self,
-        cond: torch.Tensor,
+        cond_seq: torch.Tensor,
         shape: torch.Size = None,
         num_steps: int = None,
     ):
-        """Generate a single frame from ``cond``.
+        """Generate a single frame from ``cond_seq``.
 
-        cond: [B, S, C, H, W]
+        cond_seq: [B, S, C, H, W]
         return: [B, 1, C, H, W]
         """
         assert (
-            len(cond.shape) == 5
-        ), f"Expected tensor [B, S, C, H, W], got {cond.shape}"
+            len(cond_seq.shape) == 5
+        ), f"Expected tensor [B, S, C, H, W], got {cond_seq.shape}"
 
-        device = cond.device
-        batch_size = cond.shape[0]
-        cond_seq_len = cond.shape[1]
+        device = cond_seq.device
+        batch_size = cond_seq.shape[0]
+        cond_seq_len = cond_seq.shape[1]
 
         # [B, S_cond, C, H, W] -> [B, S_cond*C, H, W]
-        cond = cond.view(
+        cond = cond_seq.view(
             batch_size,
-            cond_seq_len * cond.shape[2],
-            cond.shape[3],
-            cond.shape[4],
+            cond_seq_len * cond_seq.shape[2],
+            cond_seq.shape[3],
+            cond_seq.shape[4],
         )
 
         # Initialize single frame with noise
         x_0 = torch.randn(
             batch_size,
             self.target_channels,
-            cond.shape[3],
-            cond.shape[4],
+            cond_seq.shape[3],
+            cond_seq.shape[4],
             device=device,
         )
         steps = num_steps or 1
