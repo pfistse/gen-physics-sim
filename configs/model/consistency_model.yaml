@@ -16,7 +16,8 @@ sigma_max: 20.0
 sigma_data: 0.5
 rho: 7.0
 ema_rate: 0.95
-num_steps: 5
+num_steps: 8
+rand_cons_step: true
 
 # Unrolling
 unroll_steps: ${data.target_length}

@@ -39,6 +39,7 @@ class ConsistencyModel(pl.LightningModule):
         weight_decay: float = 0.0,
         num_steps: int = 40,
         num_steps_eval: int = 1,
+        rand_cons_step: bool = False,
         consistency_training: str = "ct",
         teacher_model_path: Optional[str] = None,
         eval_config: Dict = None,
@@ -65,6 +66,7 @@ class ConsistencyModel(pl.LightningModule):
         self.weight_decay = weight_decay
         self.num_steps = num_steps
         self.num_steps_eval = num_steps_eval
+        self.rand_cons_step = rand_cons_step
         self.consistency_training = consistency_training
         self.teacher_model_path = teacher_model_path
         self.unroll_steps = unroll_steps
@@ -234,28 +236,38 @@ class ConsistencyModel(pl.LightningModule):
         ), "unroll_steps must match target sequence length"
 
         device = target_seq.device
-        s_batch = target_seq.shape[0]
-        s_channels = cond_seq.shape[2]
-        num_steps = self.num_steps
-        num_unroll_steps = self.unroll_steps
+        B = target_seq.size(0)
+        C_h = cond_seq.size(2)
+        T = self.num_steps
+        U = self.unroll_steps
 
-        t_schedule = self.get_noise_schedule(num_steps).to(device)
+        # noise level increases with step index
+        t_schedule = self.get_noise_schedule(T).to(device)
 
         total_loss = 0.0
 
         cond = cond_seq.view(
-            s_batch,
-            cond_seq.size(1) * cond_seq.size(2),
-            cond_seq.size(3),
-            cond_seq.size(4),
+            B, cond_seq.size(1) * C_h, *cond_seq.shape[3:]
         )  # [B, S_cond*C, H, W]
 
-        for i in range(num_unroll_steps):
+        for i in range(U):
             target = target_seq[:, i]
 
-            indices = torch.randint(0, num_steps - 1, (s_batch,), device=device)
-            sigma_t = t_schedule[indices]  # Current timestep (higher noise)
-            sigma_s = t_schedule[indices + 1]  # Next timestep (lower noise)
+            if self.rand_cons_step:
+                # Choose random consistency steps
+                t_idx = torch.randint(0, T - 1, (B,), device=device)
+                range_len = (T - 1) - t_idx
+                u = torch.rand(B, device=device)
+                offset = (u * range_len.float()).floor().long()
+                s_idx = t_idx + 1 + offset
+
+            else:
+                # Choose adjecent consistency steps
+                t_idx = torch.randint(0, T - 1, (B,), device=device)
+                s_idx = t_idx + 1
+
+            sigma_t = t_schedule[t_idx]  # noising level at
+            sigma_s = t_schedule[s_idx]  # noising level at random/next s
 
             noise = torch.randn_like(target)
             x_t = target + sigma_t.view(-1, 1, 1, 1) * noise
@@ -280,12 +292,13 @@ class ConsistencyModel(pl.LightningModule):
 
             total_loss += loss_consistency + loss_cond + target_loss
 
+            # Slide the conditioning window forward
             if cond_seq.shape[1] > 1:
-                cond = torch.cat([cond[:, s_channels:], f_t], dim=1)
+                cond = torch.cat([cond[:, C_h:], f_t], dim=1)
             else:
                 cond = f_t
 
-        return total_loss / num_unroll_steps
+        return total_loss / U
 
     def generate_samples(
         self,
@@ -408,9 +421,7 @@ class ConsistencyModel(pl.LightningModule):
 
             if num_cond_frames > 1:
                 # Remove oldest frame and add new frame
-                current_cond = torch.cat(
-                    [current_cond[:, 1:], next_frame], dim=1
-                )
+                current_cond = torch.cat([current_cond[:, 1:], next_frame], dim=1)
             else:
                 current_cond = next_frame
 
@@ -463,9 +474,7 @@ class ConsistencyModel(pl.LightningModule):
         if batch_idx == 0 and self.logger is not None:
             with torch.no_grad():
                 eval_steps = self.num_steps_eval
-                generated_samples = self.generate_samples(
-                    cond, num_steps=eval_steps
-                )
+                generated_samples = self.generate_samples(cond, num_steps=eval_steps)
 
                 log_samples(
                     samples=generated_samples[0, 0].cpu().numpy(),
