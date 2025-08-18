@@ -1,5 +1,4 @@
 # Gen Physics Sim
-
 This repository contains code for training generative models on 2D fluid simulations. The code is based on PyTorch Lightning and Hydra for configuration management.
 
 ## Setup
@@ -11,8 +10,7 @@ conda env create -f environment.yml
 conda activate gps
 ```
 
-Example datasets can be downloaded from [https://mediatum.ub.tum.de/1734798](https://mediatum.ub.tum.de/1734798).
-
+Example datasets can be downloaded from [https://mediatum.ub.tum.de/1734798](https://mediatum.ub.tum.de/1734798). Some datasets can be generated using the scripts in `scripts/`.
 ## Training
 
 Models are launched via Hydra. The main entry point is `src/train.py`:
@@ -32,3 +30,18 @@ python src/eval.py ckpt_path=/path/to/checkpoint.ckpt
 ```
 
 The configuration under `configs/` controls which model and data module are used.
+
+## Notation
+
+| Symbol | Meaning |
+|---|---|
+| B | batch size |
+| S | context frames |
+| C | channels per frame (F+P) |
+| F | field channels |
+| P | parameter channels |
+| H | height (spatial dimension) |
+| W | width (spatial dimension) |
+| T | noise steps |
+| U | unroll steps in training |
+| L | trajectory length in evaluation |

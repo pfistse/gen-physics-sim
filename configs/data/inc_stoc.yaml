@@ -1,0 +1,19 @@
+_target_: src.data.inc_stoc.IncStocDataModule
+
+data_path: /home/pfister/gen-physics-sim-wc/data/inc_stoc_vort.npz
+
+dim: 2
+
+sim_fields: ["vort"]
+sim_params: []
+
+num_channels: 1
+
+ctx_len: 2
+pred_len: 1
+
+num_workers: 4
+batch_size: 100
+stride: 3
+
+test_seq_seeds: [41, 42, 43, 44, 45, 56, 47, 48, 49, 50]

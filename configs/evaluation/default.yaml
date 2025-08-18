@@ -1,15 +1,32 @@
 video:
   enabled: true
-  num_frames: 100
-  fps: 10
+  fps: 2
   format: "mp4"
+  warmup: 500
+  num_frames: 10
+  normalize: "global"
 
 metrics:
-  temp_deviation:
+  mse: # inc
+    enabled: false
+    warmup_len: 500
+    num_seqs: 1
+    seq_len: 10
+
+  vrs: # inc_stoc
     enabled: true
-    num_simulations: 10
-    num_time_steps: 60
-    start_frame: 1000
+    warmup_len: 500
+    num_samples: 50
+    delta: 2 # BUG error if set to 1
+    seed: 42
+
+debugging: # diffusion model
+  denoising:
+    enabled: true
+    fps: 1
+    steps: 20 # TODO obsolete
+    normalize: "global"
 
 # Each index corresponds to a channel. Use null to skip plotting that channel.
-channel_titles: ["vel_y", "vel_x", "press", null]
+# channel_titles: ["vel_y", "vel_x", "press", null]
+channel_titles: ["vort"] # TODO concate sim_fields and sim_params from data

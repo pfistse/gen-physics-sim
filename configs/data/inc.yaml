@@ -1,12 +1,12 @@
-_target_: data.PhysicsDataModule
-data_path: /path/to/data
+_target_: src.data.inc.IncDataModule
+data_path: /home/pfister/gen-physics-sim/data/128_inc
 
 # Loader
-batch_size: 15
-num_workers: 0
-conditioning_length: 2
-target_length: 2 # must be increased for models that do unrolling
-dimension: 2
+batch_size: 128
+num_workers: 4
+ctx_len: 2
+pred_len: 1 # must be increased for models that do unrolling
+dim: 2
 frame_size: [128, 64]
 
 # Dataset
@@ -93,6 +93,8 @@ test_frame_range: [1000, 1150]
 
 sim_fields: ["vel", "pres"]
 sim_params: ["rey"]
+
+num_channels: 4
 
 # Normalization statistics
 field_mean:

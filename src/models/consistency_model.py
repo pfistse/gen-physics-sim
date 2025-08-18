@@ -1,95 +1,65 @@
+from utils.metrics import calculate_mse, calculate_vrs
+from utils.wandb import (
+    log_sample,
+    log_samples_video,
+    log_comparison_video,
+    log_mse,
+)
+from utils.log import get_logger, log_dict
 import torch
 import torch.nn as nn
 import pytorch_lightning as pl
 from typing import Dict, Tuple, List, Union, Optional
+from dataclasses import dataclass, field, fields
 import logging
 import numpy as np
 import copy
 import wandb
+import rootutils
 
-from utils.log import get_logger, log_dict
-from utils.wandb import (
-    log_samples,
-    log_samples_video,
-    log_comparison_video,
-    log_temporal_deviation,
-)
-from utils.evaluation import calculate_temporal_deviation
+# Setup root directory for imports
+rootutils.setup_root(__file__, indicator=".project-root", pythonpath=True)
+
 
 logger = get_logger("models.cm")
+
+
+@dataclass
+class ConsistencyModelCfg:
+    dim: int
+    sim_fields: List[str]
+    sim_params: List[str]
+    ctx_len: int
+    net: nn.Module
+    sigma_min: float = 0.01
+    sigma_max: float = 20.0
+    sigma_data: float = 1.0
+    rho: float = 7.0
+    ema_rate: float = 0.95
+    lr: float = 1e-4
+    weight_decay: float = 0.0
+    num_steps: int = 8
+    num_steps_eval: int = 1
+    rand_cons_step: bool = True
+    consistency_training: str = "ct"
+    teacher_model_path: Optional[str] = None
+    eval_config: Dict = field(default_factory=dict)
+    unroll_steps: int = 1
+    target_loss_weight: float = 0.1
 
 
 class ConsistencyModel(pl.LightningModule):
     """Consistency model for physics simulations."""
 
-    def __init__(
-        self,
-        dimension: int,
-        data_size: List[int],
-        sim_fields: List[str],
-        sim_params: List[str],
-        conditioning_length: int,
-        network: nn.Module,
-        sigma_min: float = 0.002,
-        sigma_max: float = 80.0,
-        sigma_data: float = 0.5,
-        rho: float = 7.0,
-        ema_rate: float = 0.9999,
-        lr: float = 1e-4,
-        weight_decay: float = 0.0,
-        num_steps: int = 40,
-        num_steps_eval: int = 1,
-        rand_cons_step: bool = False,
-        consistency_training: str = "ct",
-        teacher_model_path: Optional[str] = None,
-        eval_config: Dict = None,
-        unroll_steps: int = 1,
-        target_loss_weight: float = 0.1,
-    ):
-        """Instantiate the model and store hyperparameters."""
+    def __init__(self, cfg: ConsistencyModelCfg):
+        """Instantiate the model with a structured config."""
         super(ConsistencyModel, self).__init__()
 
-        self.save_hyperparameters(ignore=["network"])
+        self.net = cfg.net
 
-        self.dimension = dimension
-        self.data_size = data_size
-        self.sim_fields = sim_fields
-        self.sim_params = sim_params
-        self.conditioning_length = conditioning_length
-        self.target_length = 1
-        self.sigma_min = sigma_min
-        self.sigma_max = sigma_max
-        self.sigma_data = sigma_data
-        self.rho = rho
-        self.ema_rate = ema_rate
-        self.lr = lr
-        self.weight_decay = weight_decay
-        self.num_steps = num_steps
-        self.num_steps_eval = num_steps_eval
-        self.rand_cons_step = rand_cons_step
-        self.consistency_training = consistency_training
-        self.teacher_model_path = teacher_model_path
-        self.unroll_steps = unroll_steps
-        self.target_loss_weight = target_loss_weight
-
-        self.eval_config = eval_config or {}
-
-        field_channels = 0
-        for field in sim_fields:
-            if field == "vel":
-                field_channels += dimension
-            elif field == "pres":
-                field_channels += 1
-            else:
-                field_channels += 1
-
-        self.target_channels = field_channels + len(sim_params)
-
-        cond_frames = conditioning_length
-        channels_per_frame = field_channels + len(sim_params)
-        self.cond_channels = cond_frames * channels_per_frame
-        self.total_channels = self.cond_channels + self.target_channels
-        self.model = network
+        for f in fields(cfg):
+            if f.name != 'net':
+                setattr(self, f.name, getattr(cfg, f.name))
 
         # Initialize target network (EMA of online network)
         self.target_model = self._create_target_model()
@@ -97,12 +67,15 @@ class ConsistencyModel(pl.LightningModule):
 
         # Load teacher model if doing consistency distillation
         self.teacher_model = None
-        if consistency_training == "cd" and teacher_model_path:
-            self.teacher_model = self._load_teacher_model(teacher_model_path)
+        if self.consistency_training == "cd" and self.teacher_model_path:
+            self.teacher_model = self._load_teacher_model(self.teacher_model_path)
+
+        cfg_dict = {f.name: getattr(cfg, f.name) for f in fields(cfg) if f.name != "net"}
+        self.save_hyperparameters(cfg_dict)
 
     def _create_target_model(self):
         """Create target network with same architecture as online network."""
-        target_model = copy.deepcopy(self.model)
+        target_model = copy.deepcopy(self.net)
 
         # Disable gradients
         for param in target_model.parameters():
@@ -113,20 +86,14 @@ class ConsistencyModel(pl.LightningModule):
     def _initialize_target_model(self):
         """Initialize target model with online model parameters."""
         with torch.no_grad():
-            for target_param, online_param in zip(
-                self.target_model.parameters(), self.model.parameters()
-            ):
+            for target_param, online_param in zip(self.target_model.parameters(), self.net.parameters()):
                 target_param.data.copy_(online_param.data)
 
     def _update_target_model(self):
         """Update target model using exponential moving average."""
         with torch.no_grad():
-            for target_param, online_param in zip(
-                self.target_model.parameters(), self.model.parameters()
-            ):
-                target_param.data.mul_(self.ema_rate).add_(
-                    online_param.data, alpha=1 - self.ema_rate
-                )
+            for target_param, online_param in zip(self.target_model.parameters(), self.net.parameters()):
+                target_param.data.mul_(self.ema_rate).add_(online_param.data, alpha=1 - self.ema_rate)
 
     def _load_teacher_model(self, teacher_path: str):
         """Load teacher model for consistency distillation."""
@@ -142,10 +109,7 @@ class ConsistencyModel(pl.LightningModule):
         sigma_max_rho = self.sigma_max ** (1 / self.rho)
         sigma_min_rho = self.sigma_min ** (1 / self.rho)
 
-        t = (
-            sigma_max_rho
-            + step_indices / (num_steps - 1) * (sigma_min_rho - sigma_max_rho)
-        ) ** self.rho
+        t = (sigma_max_rho + step_indices / (num_steps - 1) * (sigma_min_rho - sigma_max_rho)) ** self.rho
         t = torch.clamp(t, min=self.sigma_min, max=self.sigma_max)
 
         return t
@@ -179,7 +143,7 @@ class ConsistencyModel(pl.LightningModule):
 
         x: [B, C, H, W]
         sigma: [B] or scalar
-        cond: [B, S_cond*C, H, W]
+        cond: [B, S*C, H, W]
         return: [B, C, H, W]
         """
         if sigma.dim() == 0:
@@ -198,60 +162,57 @@ class ConsistencyModel(pl.LightningModule):
         # Initialize output with input (identity for boundary condition)
         output = x.clone()
 
-        # Only process samples above sigma_min
-        if process_mask.sum() > 0:
-            c_skip_val = self.c_skip(sigma_reshaped)
-            c_out_val = self.c_out(sigma_reshaped)
-            c_in_val = self.c_in(sigma_reshaped)
-            c_noise_val = self.c_noise(sigma).view(-1)
+        # if process_mask.sum() > 0: TODO
+        c_skip_val = self.c_skip(sigma_reshaped)
+        c_out_val = self.c_out(sigma_reshaped)
+        c_in_val = self.c_in(sigma_reshaped)
+        c_noise_val = self.c_noise(sigma).view(-1)
 
-            x_in = torch.cat([cond, c_in_val * x], dim=1)
+        x_in = torch.cat([cond, c_in_val * x], dim=1)
 
-            model = self.target_model if use_target else self.model
+        model = self.target_model if use_target else self.net
 
-            f_theta_full = model(x_in, c_noise_val)
+        f_theta_full = model(x_in, c_noise_val)
 
-            f_theta_cond = f_theta_full[:, : cond.shape[1], :, :]
-            f_theta = f_theta_full[:, cond.shape[1] :, :, :]
+        f_theta_cond = f_theta_full[:, : cond.shape[1], :, :]
+        f_theta = f_theta_full[:, cond.shape[1]:, :, :]
 
-            consistency_output = c_skip_val * x + c_out_val * f_theta
+        consistency_output = c_skip_val * x + c_out_val * f_theta
 
-            # Apply the process mask to only update non-boundary samples
-            output = boundary_mask * x + process_mask * consistency_output
+        # Apply the process mask to only update non-boundary samples
+        output = boundary_mask * x + process_mask * consistency_output
 
         if return_cond:
             return output, f_theta_cond
         else:
             return output
 
-    def consistency_loss(self, target_seq: torch.Tensor, cond_seq: torch.Tensor):
+    def consistency_loss(self, target: torch.Tensor, cond: torch.Tensor):
         """Return the training loss for a batch.
 
-        target_seq: [B, S, C, H, W]
-        cond_seq: [B, S, C, H, W]
+        target: [B, U, C, H, W]
+        cond: [B, S, C, H, W]
+        return: scalar loss tensor
         """
 
-        assert (
-            self.unroll_steps == target_seq.shape[1]
-        ), "unroll_steps must match target sequence length"
+        assert len(target.shape) == 5, f"Expected target tensor [B, U, C, H, W], got {target.shape}"
+        assert len(cond.shape) == 5, f"Expected cond tensor [B, S, C, H, W], got {cond.shape}"
+        assert target.size(1) == self.unroll_steps, "Second dimension of `target` must match `unroll_steps`"
 
-        device = target_seq.device
-        B = target_seq.size(0)
-        C_h = cond_seq.size(2)
+        device = target.device
+        B, S, C, H, W = cond.shape
+        U = target.size(1)
         T = self.num_steps
-        U = self.unroll_steps
 
-        # noise level increases with step index
+        # Noise level increases with step index
         t_schedule = self.get_noise_schedule(T).to(device)
 
         total_loss = 0.0
 
-        cond = cond_seq.view(
-            B, cond_seq.size(1) * C_h, *cond_seq.shape[3:]
-        )  # [B, S_cond*C, H, W]
+        cond_flat = cond.view(B, S * C, H, W)
 
         for i in range(U):
-            target = target_seq[:, i]
+            target_frame = target[:, i]
 
             if self.rand_cons_step:
                 # Choose random consistency steps
@@ -260,181 +221,143 @@ class ConsistencyModel(pl.LightningModule):
                 u = torch.rand(B, device=device)
                 offset = (u * range_len.float()).floor().long()
                 s_idx = t_idx + 1 + offset
-
             else:
-                # Choose adjecent consistency steps
+                # Choose adjacent consistency steps
                 t_idx = torch.randint(0, T - 1, (B,), device=device)
                 s_idx = t_idx + 1
 
-            sigma_t = t_schedule[t_idx]  # noising level at
-            sigma_s = t_schedule[s_idx]  # noising level at random/next s
+            sigma_t = t_schedule[t_idx]  # noise level at t
+            sigma_s = t_schedule[s_idx]  # noise level at s (next step)
 
-            noise = torch.randn_like(target)
-            x_t = target + sigma_t.view(-1, 1, 1, 1) * noise
-            x_s = target + sigma_s.view(-1, 1, 1, 1) * noise
+            noise = torch.randn_like(target_frame)
+            x_t = target_frame + sigma_t.view(-1, 1, 1, 1) * noise
+            x_s = target_frame + sigma_s.view(-1, 1, 1, 1) * noise
 
             with torch.no_grad():
-                f_s, _ = self.consistency_function(
-                    x_s, sigma_s, cond, use_target=True, return_cond=True
-                )
+                f_s, _ = self.consistency_function(x_s, sigma_s, cond_flat, use_target=True, return_cond=True)
 
-            f_t, cond_t = self.consistency_function(
-                x_t, sigma_t, cond, use_target=False, return_cond=True
-            )
+            f_t, cond_t = self.consistency_function(x_t, sigma_t, cond_flat, use_target=False, return_cond=True)
 
             loss_consistency = torch.nn.functional.mse_loss(f_t, f_s)
-            loss_cond = torch.nn.functional.mse_loss(cond_t, cond)
+            loss_cond = torch.nn.functional.mse_loss(cond_t, cond_flat)
 
-            # Improving stability
-            target_loss = (
-                torch.nn.functional.mse_loss(f_t, target) * self.target_loss_weight
-            )
+            # Improves stability
+            target_loss = torch.nn.functional.mse_loss(f_t, target_frame) * self.target_loss_weight
 
             total_loss += loss_consistency + loss_cond + target_loss
 
             # Slide the conditioning window forward
-            if cond_seq.shape[1] > 1:
-                cond = torch.cat([cond[:, C_h:], f_t], dim=1)
+            if cond.shape[1] > 1:
+                cond_flat = torch.cat([cond_flat[:, C:], f_t], dim=1)
             else:
-                cond = f_t
+                cond_flat = f_t
 
         return total_loss / U
 
     def generate_samples(
         self,
-        cond_seq: torch.Tensor,
+        cond: torch.Tensor,
         num_steps: int = 1,
         use_ema: bool = True,
         requires_grad: bool = False,
     ):
-        """Sample the next frame from ``cond_seq``.
+        """Sample the next frame from ``cond``.
 
-        cond_seq: [B, S, C, H, W]
+        cond: [B, S, C, H, W]
         return: [B, 1, C, H, W]
         """
-        if self.dimension == 3:
+        if self.dim == 3:
             raise NotImplementedError("3D consistency model not implemented yet")
 
-        device = cond_seq.device
+        assert len(cond.shape) == 5, f"Expected cond tensor [B, S, C, H, W], got {cond.shape}"
 
-        assert (
-            len(cond_seq.shape) == 5
-        ), f"Expected tensor [B, S, C, H, W], got {cond_seq.shape}"
+        device = cond.device
+        B, S, C, H, W = cond.shape
 
-        batch_size = cond_seq.shape[0]
-        cond_seq_len = cond_seq.shape[1]
+        # [B, S, C, H, W] -> [B, S * C, H, W]
+        cond_flat = cond.view(B, S * C, H, W)
 
-        # [B, S_cond, C, H, W] -> [B, S_cond*C, H, W]
-        cond = cond_seq.view(
-            batch_size,
-            cond_seq_len * cond_seq.shape[2],
-            cond_seq.shape[3],
-            cond_seq.shape[4],
-        )
-
-        model_use_target = use_ema
         context = torch.enable_grad if requires_grad else torch.no_grad
         with context():
             if num_steps == 1:
                 # Single-step generation
-                x = torch.randn(
-                    batch_size,
-                    self.target_channels,
-                    cond_seq.shape[3],
-                    cond_seq.shape[4],
-                    device=device,
-                )
-                sigma = torch.full((batch_size,), self.sigma_max, device=device)
+                x = torch.randn(B, C, H, W, device=device)
+                sigma = torch.full((B,), self.sigma_max, device=device)
 
-                generated = self.consistency_function(
-                    x, sigma, cond, use_target=model_use_target
-                )
+                x0 = self.consistency_function(x, sigma, cond_flat, use_target=use_ema)
             else:
                 # Multi-step generation
                 t_schedule = self.get_noise_schedule(num_steps).to(device)
 
                 sigma = t_schedule[0]
-                x = (
-                    torch.randn(
-                        batch_size,
-                        self.target_channels,
-                        cond_seq.shape[3],
-                        cond_seq.shape[4],
-                        device=device,
-                    )
-                    * sigma
-                )
+                x = torch.randn(B, C, H, W, device=device) * sigma
 
                 for i in range(num_steps - 1):
                     sigma = t_schedule[i]
-                    x0 = self.consistency_function(
-                        x, sigma, cond, use_target=model_use_target
-                    )
+                    x0 = self.consistency_function(x, sigma, cond_flat, use_target=use_ema)
 
                     next_sigma = t_schedule[i + 1]
-                    next_sigma = torch.clamp(
-                        next_sigma, min=self.sigma_min, max=self.sigma_max
-                    )
-                    noise_scale = torch.sqrt(
-                        torch.clamp(next_sigma**2 - self.sigma_min**2, min=0.0)
-                    )
+                    next_sigma = torch.clamp(next_sigma, min=self.sigma_min, max=self.sigma_max)
+                    noise_scale = torch.sqrt(torch.clamp(sigma**2 - next_sigma**2, min=1e-12))  # TODO check
                     noise = torch.randn_like(x)
                     x = x0 + noise_scale * noise
 
-                generated = x
+                x0 = self.consistency_function(x, t_schedule[-1], cond_flat, use_target=use_ema)  # TODO check
 
             # [B, C, H, W] -> [B, 1, C, H, W]
-            return generated.unsqueeze(1)
+            return x0.unsqueeze(1)
 
-    def generate_sequence_samples(
+    def generate_sequence(
         self,
         cond: torch.Tensor,
-        num_frames: int,
+        seq_len: int,
         num_steps: int = 1,
     ):
-        """Generate ``num_frames`` sequential samples.
+        """Generate ``seq_len`` sequential samples.
 
-        cond: [B, S_cond, C, H, W]
-        return: [B, num_frames, C, H, W]
+        cond: [B, S, C, H, W]
+        return: [B, seq_len, C, H, W]
         """
 
-        num_cond_frames = cond.shape[1]
+        B, S, C, H, W = cond.shape
 
-        generated_frames = []
-        current_cond = cond.clone()
-        field_channels = self.target_channels - len(self.sim_params)
+        P = len(self.sim_params)
+        F = C - P
+
+        cond_len = S
+        cond_window = cond.clone()
+
+        gen_seq = []
+
         const_params = None
-        if len(self.sim_params) > 0:
-            const_params = cond[:, 0, field_channels:, :, :].unsqueeze(1)
+        if P > 0:
+            const_params = cond[:, :1, -P:, :, :]
 
-        for _ in range(num_frames):
-            next_frame = self.generate_samples(
-                current_cond, num_steps=num_steps
-            )  # [B, 1, C, H, W]
+        for _ in range(seq_len):
+            next_frame = self.generate_samples(cond_window, num_steps=num_steps)  # [B, 1, C, H, W]
+
+            # Restore parameters
             if const_params is not None:
-                next_frame_fields = next_frame[:, :, :field_channels, :, :]
-                repeated_params = const_params.expand(
-                    next_frame.size(0), 1, -1, next_frame.size(-2), next_frame.size(-1)
-                )
-                next_frame = torch.cat([next_frame_fields, repeated_params], dim=2)
-            generated_frames.append(next_frame)
+                next_frame[:, :, -P:, :, :] = const_params
 
-            if num_cond_frames > 1:
+            gen_seq.append(next_frame)
+
+            if cond_len > 1:
                 # Remove oldest frame and add new frame
-                current_cond = torch.cat([current_cond[:, 1:], next_frame], dim=1)
+                cond_window = torch.cat([cond_window[:, 1:], next_frame], dim=1)
             else:
-                current_cond = next_frame
+                cond_window = next_frame
 
-        return torch.cat(generated_frames, dim=1)  # [B, num_frames, C, H, W]
+        return torch.cat(gen_seq, dim=1)  # [B, seq_len, C, H, W]
 
-    def prediction_step(self, cond: torch.Tensor, num_steps: int = 1):
+    def prediction_step(self, cond: torch.Tensor, num_steps: int):
         """Prediction step for inference mode."""
         return self.generate_samples(cond, num_steps=num_steps)
 
     def forward(
         self,
         cond: torch.Tensor,
-        target: torch.Tensor = None,
+        target: Optional[torch.Tensor] = None,
         num_steps: int = 1,
     ):
         """Training and inference entry point.
@@ -447,16 +370,15 @@ class ConsistencyModel(pl.LightningModule):
             return self.consistency_loss(target, cond)
         else:
             # Inference mode
-            return self.prediction_step(cond, num_steps=num_steps)
+            return self.prediction_step(cond, num_steps)
 
     def training_step(self, batch, batch_idx):
         """Training step for Lightning module."""
-        cond = batch[0]
-        target = batch[1]
+        cond, target = batch
 
-        loss = self.forward(cond, target)
+        loss = self.forward(cond, target, num_steps=1)
 
-        self.log("train_loss", loss, on_step=True, on_epoch=True, prog_bar=True)
+        self.log("train_loss", loss, on_step=True, on_epoch=True, prog_bar=True, sync_dist=True)
         return loss
 
     def on_train_batch_end(self, outputs, batch, batch_idx):
@@ -465,105 +387,74 @@ class ConsistencyModel(pl.LightningModule):
 
     def validation_step(self, batch, batch_idx):
         """Validation step for Lightning module."""
-        cond = batch[0]
-        target = batch[1]
 
-        val_loss = self.forward(cond, target)
-        self.log("val_loss", val_loss, on_epoch=True, prog_bar=True)
+        self.test_step(batch, batch_idx)
 
-        if batch_idx == 0 and self.logger is not None:
-            with torch.no_grad():
-                eval_steps = self.num_steps_eval
-                generated_samples = self.generate_samples(cond, num_steps=eval_steps)
-
-                log_samples(
-                    samples=generated_samples[0, 0].cpu().numpy(),
-                    channel_titles=self.eval_config["channel_titles"],
-                    lightning_module=self,
-                )
-
-                # Calulate metrics
-                temp_deviation_config = self.eval_config["metrics"]["temp_deviation"]
-                if temp_deviation_config["enabled"]:
-                    deviation_metrics = calculate_temporal_deviation(
-                        model=self,
-                        num_simulations=temp_deviation_config["num_simulations"],
-                        num_time_steps=temp_deviation_config["num_time_steps"],
-                        start_frame=temp_deviation_config.get("start_frame"),
-                        channel_titles=self.eval_config["channel_titles"],
-                        num_steps=eval_steps,
-                    )
-
-                    log_temporal_deviation(deviation_metrics, self, prefix="val")
-
-        return val_loss
+        # NOTE validation loss does not matter
+        self.log("val_loss", 0, on_epoch=True, prog_bar=True, sync_dist=True)
 
     def test_step(self, batch, batch_idx):
         """Test step for Lightning module."""
-        cond = batch[0]
-        target = batch[1]
-
-        test_loss = self.forward(cond, target)
-        self.log("test_loss", test_loss)
 
         if batch_idx == 0:
-            # Calulate metrics
-            temp_deviation_config = self.eval_config["metrics"]["temp_deviation"]
-            if temp_deviation_config["enabled"]:
-                eval_steps = self.num_steps_eval
-                deviation_metrics = calculate_temporal_deviation(
+
+            # MSE metric
+            mse_cfg = self.eval_config.metrics.mse
+            if mse_cfg.enabled:
+                mse_metrics = calculate_mse(
                     model=self,
-                    num_simulations=temp_deviation_config["num_simulations"],
-                    num_time_steps=temp_deviation_config["num_time_steps"],
-                    start_frame=temp_deviation_config.get("start_frame"),
-                    channel_titles=self.eval_config["channel_titles"],
-                    num_steps=eval_steps,
+                    channel_titles=self.eval_config.channel_titles,
+                    num_steps=self.num_steps_eval,
+                    **mse_cfg
                 )
 
-                log_temporal_deviation(deviation_metrics, self, prefix="test")
+                log_mse(mse_metrics, self, prefix="test")
+
+            # VRS metric
+            vrs_cfg = self.eval_config.metrics.vrs
+            if vrs_cfg.enabled:
+                vrs_metrics = calculate_vrs(model=self, **vrs_cfg)
+
+                for k, v in vrs_metrics.items():
+                    self.log(f"test_{k}", v, on_epoch=True, sync_dist=True)
 
             # Generate videos
-            video_config = self.eval_config["video"]
-            if video_config["enabled"]:
-                video_samples = self.generate_sequence_samples(
-                    cond=cond[:1],
-                    num_frames=video_config["num_frames"],
-                    num_steps=eval_steps,
+            video_cfg = self.eval_config.video
+            if video_cfg.enabled:
+                seq_solver = self.trainer.datamodule.train_set.load_sequence(
+                    start_frame=video_cfg.warmup,
+                    len=video_cfg.num_frames,
                 )
 
-                video_array = video_samples[0].cpu().numpy()
+                cond = seq_solver[: self.ctx_len].to(self.device).unsqueeze(0)
+
+                seq_model = self.generate_sequence(
+                    cond=cond,
+                    seq_len=video_cfg.num_frames,
+                    num_steps=self.num_steps_eval,
+                )
+
+                seq_model = seq_model[0].cpu().numpy()
 
                 log_samples_video(
-                    samples=video_array,
-                    channel_titles=self.eval_config["channel_titles"],
-                    lightning_module=self,
-                    fps=video_config["fps"],
+                    data=seq_model,
+                    channel_titles=self.eval_config.channel_titles,
+                    module=self,
+                    fps=video_cfg.fps,
+                    normalize=video_cfg.normalize,
                 )
 
-                datamodule = self.trainer.datamodule
-                ds = datamodule.test_dataset
-                first_idx = batch_idx * datamodule.batch_size
-                _, start_frame, folder = ds.sequence_paths[first_idx]
-                seq = ds.load_sequence(
-                    sim_folder=folder,
-                    start_frame=start_frame,
-                    target_length=video_config["num_frames"],
+                log_comparison_video(
+                    gen=seq_model,
+                    gt=seq_solver.cpu().numpy(),
+                    channel_titles=self.eval_config.channel_titles,
+                    module=self,
+                    fps=video_cfg.fps,
                 )
-                if seq is not None:
-                    gt_array = seq[1].cpu().numpy()
-                    log_comparison_video(
-                        generated=video_array[: len(gt_array)],
-                        target=gt_array,
-                        channel_titles=self.eval_config["channel_titles"],
-                        lightning_module=self,
-                        fps=video_config["fps"],
-                    )
 
-        return test_loss
+        return None
 
     def configure_optimizers(self):
         """Configure optimizers for training."""
-        optimizer = torch.optim.Adam(
-            self.model.parameters(), lr=self.lr, weight_decay=self.weight_decay
-        )
+        optimizer = torch.optim.Adam(self.net.parameters(), lr=self.lr, weight_decay=self.weight_decay)
         return optimizer

@@ -1,7 +1,7 @@
 import os
 import json
 from pathlib import Path
-from typing import List, Tuple, Optional, Dict
+from typing import List, Tuple, Dict, Any
 
 import numpy as np
 import torch
@@ -18,16 +18,14 @@ FIELD_FILE_MAP = {
 def _load_npz(path: Path) -> np.ndarray:
     data = np.load(path)
     if isinstance(data, np.lib.npyio.NpzFile):
-        # dummy generator stores under 'data'
         if "data" in data:
             return data["data"]
-        # fallback for numpy default key
         return data[list(data.files)[0]]
     else:
         return data
 
 
-class PhysicsDataset(Dataset):
+class IncDataset(Dataset):
     """Dataset loading sequences of physics simulation frames."""
 
     def __init__(
@@ -35,7 +33,7 @@ class PhysicsDataset(Dataset):
         root: str,
         sim_folders: List[str],
         frame_range: Tuple[int, int],
-        conditioning_length: int,
+        ctx_len: int,
         stride: int,
         sim_fields: List[str],
         sim_params: List[str],
@@ -44,17 +42,17 @@ class PhysicsDataset(Dataset):
         param_mean: Dict[str, List[float]],
         param_std: Dict[str, List[float]],
         normalize: bool = True,
-        target_length: int = 1,
+        pred_len: int = 1,
     ) -> None:
         super().__init__()
         self.root = Path(root)
         self.sim_folders = sim_folders
         self.frame_range = frame_range
-        self.conditioning_length = conditioning_length
+        self.ctx_len = ctx_len
         self.stride = stride
         self.sim_fields = sim_fields
         self.sim_params = sim_params
-        self.target_length = target_length
+        self.pred_len = pred_len
         self.field_mean = {
             k: np.asarray(v, dtype=np.float32) for k, v in field_mean.items()
         }
@@ -91,7 +89,7 @@ class PhysicsDataset(Dataset):
                 params = [0.0 for _ in self.sim_params]
             self.param_values[sim_folder] = np.array(params, dtype=np.float32)
 
-            max_start = end - (self.conditioning_length + self.target_length)
+            max_start = end - (self.ctx_len + self.pred_len)
             for frame in range(start, max_start + 1, self.stride):
                 self.sequence_paths.append((str(sim_path), frame, sim_folder))
 
@@ -100,7 +98,7 @@ class PhysicsDataset(Dataset):
 
     def _load_raw_sequence(
         self, sim_path: str, start_frame: int, length: int
-    ) -> Optional[np.ndarray]:
+    ) -> np.ndarray:
         frames = []
         for i in range(length):
             frame_idx = start_frame + i
@@ -109,15 +107,12 @@ class PhysicsDataset(Dataset):
                 fname = f"{FIELD_FILE_MAP[field]}_{frame_idx:06d}.npz"
                 fpath = Path(sim_path) / fname
                 if not fpath.is_file():
-                    return None
+                    raise FileNotFoundError(f"Frame file not found: {fpath}")
                 arr = _load_npz(fpath)
                 if arr.ndim == 3:
-                    # handle both C,H,W and H,W,C conventions
                     if arr.shape[0] <= 3:
-                        # already (C,H,W)
                         pass
                     else:
-                        # assume (H,W,C)
                         arr = np.transpose(arr, (2, 0, 1))
                 else:
                     arr = arr[None, ...]
@@ -148,103 +143,104 @@ class PhysicsDataset(Dataset):
         return (params - mean_params) / std_params
 
     def load_sequence(
-        self, sim_folder: str, start_frame: int, target_length: int
-    ) -> Optional[Tuple[torch.Tensor, torch.Tensor]]:
-        """Load a normalized sequence for evaluation or inference."""
+        self, start_frame: int, len: int, sim: int = None
+    ) -> torch.Tensor:
+
+        if sim is not None:
+            sim_folder = f"sim_{sim:06d}"
+        else:
+            sim_folder = self.sim_folders[0]
 
         sim_path = os.path.join(self.root, sim_folder)
-        length = self.conditioning_length + target_length
-        seq = self._load_raw_sequence(sim_path, start_frame, length)
+        seq = self._load_raw_sequence(sim_path, start_frame, len)
 
-        if seq is None or seq.shape[0] < length:
-            return None
+        if seq is None or seq.shape[0] < len:
+            raise FileNotFoundError(
+                f"Failed to load sequence from {sim_path} starting at frame {start_frame} with length {len}")
 
-        cond_fields = seq[: self.conditioning_length]
-        gt_fields = seq[self.conditioning_length : length]
         params = self.param_values.get(sim_folder, np.array([], dtype=np.float32))
 
         if self.normalize:
-            cond_fields = self.normalize_fields(cond_fields)
-            gt_fields = self.normalize_fields(gt_fields)
+            seq = self.normalize_fields(seq)
             params = self.normalize_params(params)
 
-        cond_fields = torch.from_numpy(cond_fields)
-        gt_fields = torch.from_numpy(gt_fields)
+        seq_tensor = torch.from_numpy(seq)
         params_tensor = torch.from_numpy(params)
-        T, _, H, W = cond_fields.shape
+        T, _, H, W = seq_tensor.shape
 
         if params_tensor.numel() > 0:
-            cond_params = (
-                params_tensor.view(1, -1, 1, 1)
-                .expand(T, -1, H, W)
-            )
-            conditioning = torch.cat([cond_fields, cond_params], dim=1)
+            params_expanded = params_tensor.view(1, -1, 1, 1).expand(T, -1, H, W)
+            seq_tensor = torch.cat([seq_tensor, params_expanded], dim=1)
 
-            tgt_params = (
-                params_tensor.view(1, -1, 1, 1)
-                .expand(gt_fields.shape[0], -1, H, W)
-            )
-            target = torch.cat([gt_fields, tgt_params], dim=1)
-        else:
-            conditioning = cond_fields
-            target = gt_fields
+        return seq_tensor
 
-        return conditioning, target
+    def load_sequences(self, start_frame: int, length: int, num_seq: int) -> List[torch.Tensor]:
+        """Load multiple sequences from the first num_seq simulations."""
+        sequences = []
+        for i in range(min(num_seq, len(self.sim_folders))):
+            sim_folder = self.sim_folders[i]
+            sim_num = int(sim_folder.split('_')[1])
+            sequence = self.load_sequence(start_frame=start_frame, len=length, sim=sim_num)
+            sequences.append(sequence)
+        return sequences
 
     def __getitem__(self, idx: int):
         _, start, folder = self.sequence_paths[idx]
 
+        sim_num = int(folder.split('_')[1])
+
         loaded = self.load_sequence(
-            sim_folder=folder,
+            sim=sim_num,
             start_frame=start,
-            target_length=self.target_length,
+            len=self.ctx_len + self.pred_len,
         )
 
-        if loaded is None:
-            raise FileNotFoundError("Sequence frames missing")
+        cond = loaded[:self.ctx_len]
+        target = loaded[self.ctx_len:self.ctx_len + self.pred_len]
 
-        return loaded
+        return cond, target
 
 
-class PhysicsDataModule(pl.LightningDataModule):
-    """PyTorch Lightning datamodule for physics simulations."""
-
+class IncDataModule(pl.LightningDataModule):
     def __init__(
         self,
         data_path: str,
         batch_size: int = 32,
         num_workers: int = 0,
-        conditioning_length: int = 2,
-        dimension: int = 2,
+        ctx_len: int = 2,
+        dim: int = 2,
         frame_size: Tuple[int, int] = (128, 64),
         stride: int = 1,
-        train_sim_selection: Optional[List[int]] = None,
-        test_sim_selection: Optional[List[int]] = None,
+        train_sim_selection: list = None,
+        test_sim_selection: list = None,
         train_frame_range: Tuple[int, int] = (0, 1300),
         test_frame_range: Tuple[int, int] = (1000, 1120),
-        sim_fields: Optional[List[str]] = None,
-        sim_params: Optional[List[str]] = None,
-        field_mean: Optional[Dict[str, List[float]]] = None,
-        field_std: Optional[Dict[str, List[float]]] = None,
-        param_mean: Optional[Dict[str, List[float]]] = None,
-        param_std: Optional[Dict[str, List[float]]] = None,
-        target_length: int = 1,
+        sim_fields: list = None,
+        sim_params: list = None,
+        field_mean: dict = None,
+        field_std: dict = None,
+        param_mean: dict = None,
+        param_std: dict = None,
+        pred_len: int = 1,
+        num_channels: int = 4,
+        **_: Any,
     ) -> None:
         super().__init__()
         self.data_path = data_path
         self.batch_size = batch_size
         self.num_workers = num_workers
-        self.conditioning_length = conditioning_length
-        self.dimension = dimension
+        self.ctx_len = ctx_len
+        self.dim = dim
         self.frame_size = frame_size
         self.stride = stride
-        self.target_length = target_length
+        self.pred_len = pred_len
         self.train_sim_selection = train_sim_selection or []
         self.test_sim_selection = test_sim_selection or []
         self.train_frame_range = train_frame_range
         self.test_frame_range = test_frame_range
         self.sim_fields = sim_fields or ["vel", "pres"]
         self.sim_params = sim_params or ["rey"]
+        self.num_channels = num_channels
 
         if (
             field_mean is None
@@ -256,26 +252,31 @@ class PhysicsDataModule(pl.LightningDataModule):
                 "Normalization statistics must be provided in the configuration"
             )
 
-        self.field_mean = {k: np.asarray(v, dtype=np.float32) for k, v in field_mean.items()}
-        self.field_std = {k: np.asarray(v, dtype=np.float32) for k, v in field_std.items()}
-        self.param_mean = {k: np.asarray(v, dtype=np.float32) for k, v in param_mean.items()}
-        self.param_std = {k: np.asarray(v, dtype=np.float32) for k, v in param_std.items()}
+        self.field_mean = {
+            k: np.asarray(v, dtype=np.float32) for k, v in field_mean.items()
+        }
+        self.field_std = {
+            k: np.asarray(v, dtype=np.float32) for k, v in field_std.items()
+        }
+        self.param_mean = {
+            k: np.asarray(v, dtype=np.float32) for k, v in param_mean.items()
+        }
+        self.param_std = {
+            k: np.asarray(v, dtype=np.float32) for k, v in param_std.items()
+        }
 
-        self.train_dataset: Optional[PhysicsDataset] = None
-        self.test_dataset: Optional[PhysicsDataset] = None
+        self.train_set = None
+        self.test_set = None
 
-        self.test_sim_folders: List[str] = []
-
-
-    def setup(self, stage: Optional[str] = None) -> None:
+    def setup(self, stage: str = None) -> None:
         train_folders = [f"sim_{i:06d}" for i in self.train_sim_selection]
         test_folders = [f"sim_{i:06d}" for i in self.test_sim_selection]
 
-        self.train_dataset = PhysicsDataset(
+        self.train_set = IncDataset(
             self.data_path,
             train_folders,
             self.train_frame_range,
-            self.conditioning_length,
+            self.ctx_len,
             self.stride,
             self.sim_fields,
             self.sim_params,
@@ -284,14 +285,14 @@ class PhysicsDataModule(pl.LightningDataModule):
             self.param_mean,
             self.param_std,
             normalize=True,
-            target_length=self.target_length,
+            pred_len=self.pred_len,
         )
 
-        self.test_dataset = PhysicsDataset(
+        self.test_set = IncDataset(
             self.data_path,
             test_folders,
             self.test_frame_range,
-            self.conditioning_length,
+            self.ctx_len,
             self.stride,
             self.sim_fields,
             self.sim_params,
@@ -300,15 +301,12 @@ class PhysicsDataModule(pl.LightningDataModule):
             self.param_mean,
             self.param_std,
             normalize=True,
-            target_length=self.target_length,
+            pred_len=self.pred_len,
         )
-
-        self.test_sim_folders = test_folders
-
 
     def train_dataloader(self) -> DataLoader:
         return DataLoader(
-            self.train_dataset,
+            self.train_set,
             batch_size=self.batch_size,
             shuffle=True,
             num_workers=self.num_workers,
@@ -316,7 +314,7 @@ class PhysicsDataModule(pl.LightningDataModule):
 
     def val_dataloader(self) -> DataLoader:
         return DataLoader(
-            self.test_dataset,
+            self.test_set,
             batch_size=self.batch_size,
             shuffle=False,
             num_workers=self.num_workers,
@@ -324,9 +322,8 @@ class PhysicsDataModule(pl.LightningDataModule):
 
     def test_dataloader(self) -> DataLoader:
         return DataLoader(
-            self.test_dataset,
+            self.test_set,
             batch_size=self.batch_size,
             shuffle=False,
             num_workers=self.num_workers,
         )
-

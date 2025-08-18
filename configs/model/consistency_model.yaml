@@ -1,44 +1,43 @@
 _target_: models.consistency_model.ConsistencyModel
+cfg:
+  _target_: models.consistency_model.ConsistencyModelCfg
+  # General model parameters
+  dim: ${data.dim}
+  ctx_len: ${data.ctx_len}
+  sim_fields: ${data.sim_fields}
+  sim_params: ${data.sim_params}
 
-# General model parameters
-dimension: 2
-data_size: [128, 64]
-conditioning_length: ${data.conditioning_length}
-sim_fields: ${data.sim_fields}
-sim_params: ${data.sim_params}
+  # Consistency-model specific parameters
+  consistency_training: "ct" # "ct" for Consistency Training, "cd" for Consistency Distillation
+  teacher_model_path: null # only needed for "cd"
+  sigma_min: 0.01
+  sigma_max: 20.0
+  sigma_data: 1 # assumed std of data
+  rho: 7.0
+  ema_rate: 0.95
+  num_steps: 8
+  rand_cons_step: true
 
-# Model parameters
-consistency_training: "ct" # "ct" for Consistency Training, "cd" for Consistency Distillation
-teacher_model_path: null # only needed for "cd"
+  # Unrolling
+  unroll_steps: ${data.pred_len}
+  target_loss_weight: 0.1
 
-sigma_min: 0.01
-sigma_max: 20.0
-sigma_data: 0.5
-rho: 7.0
-ema_rate: 0.95
-num_steps: 8
-rand_cons_step: true
+  # Network configuration
+  net:
+    _target_: models.components.unet.Unet
+    channels: ${mul:${data.num_channels},${add:${data.ctx_len},1}}
+    out_dim: ${mul:${data.num_channels},${add:${data.ctx_len},1}}
+    dim: 128
+    dim_mults: [1, 1, 1]
+    use_convnext: true
+    convnext_mult: 1
 
-# Unrolling
-unroll_steps: ${data.target_length}
-target_loss_weight: 0.1
+  # Optimization parameters
+  lr: 1e-4
+  weight_decay: 0.0
 
-# Network configuration
-network:
-  _target_: models.components.unet.Unet
-  channels: 12 # 8 conditioning + 4 target channels
-  out_dim: 12
-  dim: 64
-  dim_mults: [1, 1, 1]
-  use_convnext: true
-  convnext_mult: 1
+  # Evaluation
+  num_steps_eval: 5
 
-# Optimization parameters
-lr: 1e-4
-weight_decay: 0.0
-
-# Evaluation
-num_steps_eval: 1
-
-# Logging configuration
-eval_config: ${evaluation}
+  # Logging configuration
+  eval_config: ${evaluation}

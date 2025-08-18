@@ -1,21 +1,23 @@
 
-_target_: models.flow_matching.FlowMatchingModel
+_target_: models.diffusion_model.DiffusionModel
 cfg:
-  _target_: models.flow_matching.FlowMatchingModelCfg
+  _target_: models.diffusion_model.DiffusionModelCfg
   # General model parameters
   dim: ${data.dim}
   ctx_len: ${data.ctx_len}
   sim_fields: ${data.sim_fields}
   sim_params: ${data.sim_params}
 
-  # Flow Matching-specific parameters
-  sigma_min: 0.001
+  # Diffusion-specific parameters
+  timesteps: 100
+  beta_schedule: "linear"
+  cond_noising: true
 
   # Network configuration
   net:
     _target_: models.components.unet.Unet
-    channels: ${mul:${data.num_channels},${add:${data.ctx_len},1}} 
-    out_dim: ${mul:${data.num_channels},${add:${data.ctx_len},1}}
+    channels: ${mul:${data.num_channels},${add:${data.ctx_len},1}}
+    out_dim: ${data.num_channels}
     dim: 128
     dim_mults: [1, 1, 1]
     use_convnext: true
@@ -26,7 +28,7 @@ cfg:
   weight_decay: 0.0
 
   # Evaluation
-  num_steps_eval: 20
+  num_steps_eval: 100
 
   # Logging configuration
   eval_config: ${evaluation}

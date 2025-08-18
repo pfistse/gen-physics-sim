@@ -1,7 +1,7 @@
 defaults:
   - model: consistency_model
   - tracking: wandb
-  - data: default
+  - data: inc_stoc
   - logging: default
   - evaluation: default
   - _self_
@@ -10,16 +10,18 @@ train: true
 test: true
 seed: 42
 
-ckpt_path: null
+paths:
+  data_dir: /home/pfister/gen-physics-sim-wc/configs/data
 
+ckpt_path: null #"/home/pfister/gen-physics-sim-wc/runs/2025-08-18/00-17-19/checkpoints/last.ckpt"
 trainer:
   _target_: pytorch_lightning.Trainer
   max_epochs: 3100
   accelerator: "gpu"
   strategy: "ddp"
-  devices: [1]
+  devices: [0]
   precision: 32
-  check_val_every_n_epoch: 10
+  check_val_every_n_epoch: 1
   deterministic: true
 
 callbacks:

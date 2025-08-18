@@ -84,8 +84,8 @@ def cosine_beta_schedule(timesteps, s=0.008):
 
 def linear_beta_schedule(timesteps):
     """Linear schedule with scaling based on timesteps."""
-    beta_start = 0.0001 * (50/timesteps)
-    beta_end = 0.02 * (50/timesteps)
+    beta_start = 0.0001 * (500/timesteps) # NOTE changed 50 to 1000
+    beta_end = 0.02 * (500/timesteps) # NOTE changed 50 to 1000
     betas = torch.linspace(beta_start, beta_end, timesteps)
     return torch.clip(betas, 0.0001, 0.9999)
 

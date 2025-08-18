@@ -12,10 +12,13 @@ import rootutils
 import pytorch_lightning as pl
 from pytorch_lightning import Callback, LightningDataModule, LightningModule, Trainer
 from pytorch_lightning.loggers import Logger
-from omegaconf import DictConfig
+from omegaconf import DictConfig, OmegaConf
 
 # Setup root directory to allow absolute imports
 rootutils.setup_root(__file__, indicator=".project-root", pythonpath=True)
+
+OmegaConf.register_new_resolver("mul", lambda x, y: x * y)
+OmegaConf.register_new_resolver("add", lambda x, y: x + y)
 
 from utils.log import get_logger
 
@@ -131,8 +134,4 @@ def main(cfg: DictConfig) -> None:
 
 
 if __name__ == "__main__":
-    # Allow passing arguments with a leading '--' as produced by wandb sweeps
-    for idx, arg in enumerate(sys.argv[1:], start=1):
-        if arg.startswith("--") and "=" in arg:
-            sys.argv[idx] = arg[2:]
     main()

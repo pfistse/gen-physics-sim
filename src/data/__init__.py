@@ -1,3 +1,4 @@
-from .datamodule import PhysicsDataModule
+from .inc import IncDataModule
+from .inc_stoc import IncStocDataModule
 
-__all__ = ["PhysicsDataModule"]
+__all__ = ["IncDataModule", "IncStocDataModule"]
