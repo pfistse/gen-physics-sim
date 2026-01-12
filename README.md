@@ -11,12 +11,7 @@ conda activate gps
 
 Models are launched via Hydra. The main entry point is `src/train.py`.
 
-To train the default model (Consistency Model):
-```bash
-python src/train.py
-```
-
-To train a different model (e.g., Flow Matching):
+To train a specific model (e.g., Flow Matching):
 ```bash
 python src/train.py model=fm
 ```
