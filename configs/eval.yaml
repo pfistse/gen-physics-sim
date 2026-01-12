@@ -1,0 +1,39 @@
+defaults:
+  - model: dm
+  - tracking: wandb_eval
+  - data: inc_stoc_eval
+  - evaluation: full
+  - _self_
+
+# Global Params
+train: false
+test: true
+seed: 42
+
+# Paths
+ckpt_path: "/home/spfister/gen-physics-sim-wc/checkpoints/dm2/epoch520/last-ema.ckpt"
+
+# Trainer
+trainer:
+  _target_: pytorch_lightning.Trainer
+  accelerator: "gpu"
+  strategy: "ddp"
+  devices: [0, 1, 2]
+  precision: 32
+
+# Callbacks
+callbacks:
+  rich_progress_bar:
+    _target_: pytorch_lightning.callbacks.RichProgressBar
+
+# Hydra
+hydra:
+  job:
+    chdir: true
+    env_set:
+      FORCE_COLOR: "1"
+  run:
+    dir: results/${run_name:${hydra:runtime.choices.model},${ckpt_path}}_${now:%Y-%m-%d_%H-%M-%S}
+  sweep:
+    dir: multirun/${now:%Y-%m-%d}/${now:%H-%M-%S}
+    subdir: ${hydra.job.num}

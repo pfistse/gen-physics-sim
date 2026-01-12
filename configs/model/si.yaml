@@ -1,0 +1,36 @@
+_target_: models.si.StochasticInterpolation
+
+# Data Params
+dim: ${data.dim}
+ctx_len: ${data.ctx_len}
+sim_fields: ${data.sim_fields}
+sim_params: ${data.sim_params}
+
+# Model Specific Hyperparams
+sigma_coef: 1.0
+beta_fn: "t^2"
+t_min_train: 0.0
+t_max_train: 1.0
+t_min_sampling: 0.0
+t_max_sampling: 0.999
+foellmer_process: False
+
+# Network
+net:
+  _target_: models.components.unet.UNetWrapper
+  in_channels: ${mul:${data.num_channels},${add:${data.ctx_len},1}}
+  out_channels: ${data.num_channels}
+  hid_channels: 64
+  ch_multipliers: [1, 2, 2, 2]
+  num_res_blocks: 2
+  apply_attn: [false, true, false, false]
+  drop_rate: 0.1
+  resample_with_conv: true
+
+# Optimizer
+lr: 1e-3
+weight_decay: 0.0
+
+# Evaluation/Inference
+num_steps_eval: 100
+eval_config: ${evaluation}

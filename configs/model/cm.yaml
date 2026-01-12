@@ -1,0 +1,42 @@
+_target_: models.cm.ConsistencyModel
+slug: cm
+
+# Data Params
+dim: ${data.dim}
+ctx_len: ${data.ctx_len}
+sim_fields: ${data.sim_fields}
+sim_params: ${data.sim_params}
+
+# Model Specific Hyperparams
+consistency_training: "ct"
+sigma_min: 0.001
+sigma_max: 20.0
+sigma_data: 1 # assumed std of data
+rho: 7.0
+noise_schedule: "karras"
+steps_start: 8
+steps_max: 128
+num_epochs: 500
+ema_rate_start: 0.99
+unroll_steps: 1
+
+# Network
+net:
+  _target_: models.components.unet.UNetWrapper
+  in_channels: ${mul:${data.num_channels},${add:${data.ctx_len},1}}
+  out_channels: ${data.num_channels}
+
+  hid_channels: 64
+  ch_multipliers: [1, 2, 2, 2]
+  num_res_blocks: 2
+  apply_attn: [false, true, false, false]
+  drop_rate: 0.1
+  resample_with_conv: true
+
+# Optimizer
+lr: 1e-4
+weight_decay: 0
+
+# Evaluation/Inference
+num_steps_eval: 4
+eval_config: ${evaluation}

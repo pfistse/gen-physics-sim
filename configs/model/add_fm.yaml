@@ -1,0 +1,37 @@
+_target_: models.add_fm.ADDFlowMatching
+_recursive_: false
+
+defaults:
+  - fm@pretrained_config
+  - _self_
+
+# Data Params
+dim: ${data.dim}
+ctx_len: ${data.ctx_len}
+sim_fields: ${data.sim_fields}
+sim_params: ${data.sim_params}
+
+# Model Specific Hyperparams
+ckpt_path: "/home/spfister/gen-physics-sim-wc/checkpoints/fm/epoch241/last.ckpt"
+gen_rate: 15
+num_student_steps: 1
+num_teacher_steps: 20
+g_loss_lambda: 0.5
+r1_gamma: 1.0
+discriminator_config:
+  _target_: models.components.discriminator.ADDDiscriminator
+  hidden_dim: 128
+  freeze_backbone: false
+
+# Optimizer
+lr_g: 1e-6
+lr_d: 1e-6
+b1_g: 0.0
+b2_g: 0.99
+b1_d: 0.0
+b2_d: 0.99
+weight_decay: 0.0
+
+# Evaluation/Inference
+num_steps_eval: 1
+eval_config: ${evaluation}

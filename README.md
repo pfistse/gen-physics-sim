@@ -1,7 +1,4 @@
-# Gen Physics Sim
-This repository contains code for training generative models on 2D fluid simulations. The code is based on PyTorch Lightning and Hydra for configuration management.
-
-## Setup
+# Setup
 
 Create a conda environment and install the dependencies:
 
@@ -10,18 +7,28 @@ conda env create -f environment.yml
 conda activate gps
 ```
 
-Example datasets can be downloaded from [https://mediatum.ub.tum.de/1734798](https://mediatum.ub.tum.de/1734798). Some datasets can be generated using the scripts in `scripts/`.
-## Training
+# Training
 
-Models are launched via Hydra. The main entry point is `src/train.py`:
+Models are launched via Hydra. The main entry point is `src/train.py`.
 
+To train the default model (Consistency Model):
 ```bash
 python src/train.py
 ```
 
-Check `configs/train.yaml` for configuration options.
+To train a different model (e.g., Flow Matching):
+```bash
+python src/train.py model=fm
+```
 
-## Evaluation
+To enable Weights & Biases tracking:
+```bash
+python src/train.py tracking=wandb_train
+```
+
+Check `configs/train.yaml` and the `configs/model/` directory for all available configuration options.
+
+# Evaluation
 
 After training you can run the test phase with `src/eval.py`:
 
@@ -29,9 +36,12 @@ After training you can run the test phase with `src/eval.py`:
 python src/eval.py ckpt_path=/path/to/checkpoint.ckpt
 ```
 
-The configuration under `configs/` controls which model and data module are used.
+You can also override the model or data configuration during evaluation if needed:
+```bash
+python src/eval.py model=dm ckpt_path=...
+```
 
-## Notation
+# Notation
 
 | Symbol | Meaning |
 |---|---|

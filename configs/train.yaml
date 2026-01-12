@@ -1,46 +1,57 @@
 defaults:
-  - model: consistency_model
-  - tracking: wandb
+  - model: cm
+  - tracking: wandb_train
   - data: inc_stoc
-  - logging: default
-  - evaluation: default
+  - evaluation: monitor
   - _self_
 
+# Global Params
 train: true
 test: true
 seed: 42
 
+# Paths
 paths:
-  data_dir: /home/pfister/gen-physics-sim-wc/configs/data
+  data_dir: /home/spfister/gen-physics-sim-wc/configs/data
 
-ckpt_path: null #"/home/pfister/gen-physics-sim-wc/runs/2025-08-18/00-17-19/checkpoints/last.ckpt"
+ckpt_path: null
+
+# Trainer
 trainer:
   _target_: pytorch_lightning.Trainer
-  max_epochs: 3100
+  max_epochs: 1000
   accelerator: "gpu"
   strategy: "ddp"
-  devices: [0]
-  precision: 32
+  devices: [1,2]
+  precision: 16
   check_val_every_n_epoch: 1
-  deterministic: true
+  num_sanity_val_steps: 0
 
+# Callbacks
 callbacks:
   model_checkpoint:
     _target_: pytorch_lightning.callbacks.ModelCheckpoint
-    dirpath: "checkpoints"
-    monitor: "val_loss"
-    filename: "model-{epoch:02d}-{val_loss:.4f}"
-    save_top_k: 3
-    mode: "min"
+    dirpath: ${hydra:run.dir}/checkpoints
+    filename: "epoch{epoch:04d}"
+    every_n_epochs: 10
+    save_top_k: -1
     save_last: true
-    save_on_train_epoch_end: false
-    auto_insert_metric_name: false
+
   learning_rate_monitor:
     _target_: pytorch_lightning.callbacks.LearningRateMonitor
     logging_interval: "epoch"
+
   rich_progress_bar:
     _target_: pytorch_lightning.callbacks.RichProgressBar
 
+  ema:
+    _target_: callbacks.ema.EMA
+    decay: 0.999
+    validate_original_weights: false
+    every_n_steps: 1
+    cpu_offload: false
+
+# Hydra
 hydra:
   job:
     chdir: true

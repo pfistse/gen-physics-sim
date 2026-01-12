@@ -11,8 +11,12 @@ pred_len: 1
 
 # Loader Params
 num_workers: 6
-batch_size: 30
+batch_size: 400
 stride: 1
 
 # Train/Test Selection
-test_seq_seeds: [42, 43, 44]
+test_seq_seeds:
+  [
+    42, 43, 44, 45, 46, 47, 48, 49, 50, 51, 52, 53, 54, 55, 56, 57, 58, 59, 60,
+    61, 62
+  ]

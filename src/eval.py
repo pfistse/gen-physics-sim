@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 
-"""Train generative physics models with Hydra and Lightning."""
+"""Evaluate a trained model on the test set using Hydra and Lightning."""
 
 import logging
 import hydra
@@ -25,10 +25,10 @@ OmegaConf.register_new_resolver(
 log = logging.getLogger(__name__)
 
 
-@hydra.main(version_base="1.3", config_path="../configs", config_name="train")
+@hydra.main(version_base="1.3", config_path="../configs", config_name="eval")
 def main(cfg: DictConfig) -> None:
-    """Main entry point for training."""
-    
+    """Main entry point for evaluation."""
+
     if cfg.get("seed"):
         log.info(f"Setting random seed to {cfg.seed}")
         pl.seed_everything(cfg.seed, workers=True)
@@ -48,18 +48,10 @@ def main(cfg: DictConfig) -> None:
     log.info(f"Instantiating trainer <{cfg.trainer._target_}>")
     trainer = hydra.utils.instantiate(cfg.trainer, callbacks=callbacks, logger=loggers)
 
-    if cfg.get("train"):
-        log.info("Starting training!")
-        trainer.fit(model=model, datamodule=datamodule, ckpt_path=cfg.get("ckpt_path"))
+    log.info(f"Starting testing using checkpoint: {cfg.ckpt_path}")
+    trainer.test(model=model, datamodule=datamodule, ckpt_path=cfg.ckpt_path)
 
-    if cfg.get("test"):
-        log.info("Starting testing!")
-        ckpt_path = trainer.checkpoint_callback.best_model_path or None
-        if not ckpt_path:
-            log.warning("Best ckpt not found! Using current weights for testing...")
-        trainer.test(model=model, datamodule=datamodule, ckpt_path=ckpt_path)
-
-    # Finish loggers (e.g. wandb)
+    # Finish loggers
     for lg in loggers:
         if hasattr(lg, "experiment") and hasattr(lg.experiment, "finish"):
             lg.experiment.finish()

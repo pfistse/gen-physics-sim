@@ -5,8 +5,18 @@ This package contains PyTorch Lightning modules for different generative models
 used in physics simulation tasks.
 """
 
-from .flow_matching import FlowMatchingModel
-from .consistency_model import ConsistencyModel
-from .diffusion_model import DiffusionModel
+from .fm import FlowMatchingModel
+from .cm import ConsistencyModel
+from .dm import DiffusionModel
+from .si import StochasticInterpolation
+from .unet import UNet
+from .base import BaseGenerativeModel
 
-__all__ = ["FlowMatchingModel", "ConsistencyModel", "DiffusionModel"]
+__all__ = [
+    "BaseGenerativeModel",
+    "FlowMatchingModel",
+    "ConsistencyModel",
+    "DiffusionModel",
+    "StochasticInterpolation",
+    "UNet",
+]

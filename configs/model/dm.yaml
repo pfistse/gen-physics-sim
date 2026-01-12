@@ -1,0 +1,32 @@
+_target_: models.dm.DiffusionModel
+
+# Data Params
+dim: ${data.dim}
+ctx_len: ${data.ctx_len}
+sim_fields: ${data.sim_fields}
+sim_params: ${data.sim_params}
+
+# Model Specific Hyperparams
+timesteps: 100
+beta_schedule: "linear"
+
+# Network
+net:
+  _target_: models.components.unet.UNetWrapper
+  in_channels: ${mul:${data.num_channels},${add:${data.ctx_len},1}}
+  out_channels: ${data.num_channels}
+  hid_channels: 64
+  ch_multipliers: [1, 2, 2, 2]
+  num_res_blocks: 2
+  apply_attn: [false, true, false, false]
+  drop_rate: 0.1
+  resample_with_conv: true
+
+# Optimizer
+lr: 1e-4
+weight_decay: 0.0
+
+# Evaluation/Inference
+ddim_sampling: true
+num_steps_eval: 100 # automatically uses DDIM sampling if smaller than timesteps
+eval_config: ${evaluation}

@@ -1,0 +1,92 @@
+usetex: true
+fontsize: 14
+plot_formats: ["pdf"]
+
+video:
+  enabled: false
+  fps: 3
+  format: "mp4"
+  warmup: 100
+  num_frames: 10
+  normalize: "global"
+
+metrics:
+  mse:
+    enabled: false
+    warmup_len: 100
+    num_seqs: 50
+    seq_len: 10
+
+  mean_std:
+    enabled: true
+    warmup_len: 100
+    num_samples: 1000
+    delta: 1
+    seeds:
+      [
+        42, 43, 44, 45, 46, 47, 48, 49, 50, 51, 52, 53, 54, 55, 56, 57, 58, 59, 60,
+        61, 62,
+      ]
+    cmap_mean: "icefire"
+    cmap_std: "OrRd"
+    grid_cols: 3
+    diff: false
+    show_overshoot: true
+    overshoot_tresh: 0.08
+
+  enstrophy:
+    enabled: false
+    num_seqs: 100
+    seq_len: 10
+    loglog: true
+    incl_const: false
+
+debug:
+  denoising:
+    enabled: false
+    fps: 1
+    normalize: "global"
+
+  variance:
+    enabled: false
+    warmup_len: 100
+    num_samples: 1000
+    fps: 10
+    delta: 1
+    seed: 42
+    normalize: "global"
+
+  std_steps:
+    enabled: false
+    steps: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 100]
+    warmup_len: 100
+    num_samples: 1000
+    delta: 1
+    seed: 43
+
+  mean_std_rel_err_steps:
+    enabled: false
+    steps: [25, 50, 75, 100]
+    warmup_len: 100
+    num_samples: 1000
+    delta: 1
+    seeds:
+      [
+        42, 43, 44, 45, 46, 47, 48, 49, 50, 51, 52, 53, 54, 55, 56, 57, 58, 59, 60,
+        61, 62,
+      ]
+
+  std_rel_err_grid:
+    enabled: false
+    steps: [25, 50, 75, 100, 200, 300]
+    g_coefs: [0, 0.5, 1, 1.5]
+    warmup_len: 100
+    num_samples: 1000
+    delta: 1
+    seeds:
+      [
+        42, 43, 44, 45, 46, 47, 48, 49, 50, 51, 52, 53, 54, 55, 56, 57, 58, 59, 60,
+        61, 62,
+      ]
+
+channel_titles: ["vort"]

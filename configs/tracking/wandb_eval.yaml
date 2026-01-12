@@ -1,0 +1,14 @@
+wandb:
+  _target_: pytorch_lightning.loggers.wandb.WandbLogger
+  save_dir: "."
+  offline: True
+  id: null
+  anonymous: null
+  project: "gen-physics-sim"
+  name: ${run_name:${hydra:runtime.choices.model},${ckpt_path}}_${now:%Y-%m-%d_%H-%M-%S}
+  log_model: False # upload lightning ckpts
+  prefix: ""
+  entity: "pfister-technical-university-of-munich"
+  group: ""
+  tags: []
+  job_type: ""

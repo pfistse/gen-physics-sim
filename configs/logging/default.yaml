@@ -1,3 +1,0 @@
-level: "INFO" # Can be DEBUG, INFO, WARNING, ERROR, CRITICAL
-log_file: null
-console_output: true

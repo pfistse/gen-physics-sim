@@ -1,83 +1,85 @@
 name: gps
 channels:
   - defaults
+  - https://repo.anaconda.com/pkgs/main
+  - https://repo.anaconda.com/pkgs/r
 dependencies:
-  - _libgcc_mutex=0.1
-  - _openmp_mutex=5.1
-  - aom=3.6.0
-  - bzip2=1.0.8
-  - c-ares=1.19.1
-  - ca-certificates=2025.7.15
-  - cairo=1.16.0
-  - curl=8.12.1
-  - dav1d=1.2.1
-  - expat=2.7.1
-  - ffmpeg=6.1.1
-  - fontconfig=2.14.1
-  - freetype=2.13.3
-  - gettext=0.21.0
-  - giflib=5.2.2
-  - git=2.45.2
-  - graphite2=1.3.14
-  - harfbuzz=10.2.0
-  - icu=73.1
-  - jpeg=9e
-  - krb5=1.20.1
-  - lame=3.100
-  - ld_impl_linux-64=2.40
-  - leptonica=1.82.0
-  - lerc=4.0.0
-  - libarchive=3.7.7
-  - libcurl=8.12.1
-  - libdeflate=1.22
-  - libedit=3.1.20230828
-  - libev=4.33
-  - libffi=3.4.4
-  - libgcc-ng=11.2.0
-  - libglib=2.84.2
-  - libgomp=11.2.0
-  - libiconv=1.16
-  - libnghttp2=1.57.0
-  - libogg=1.3.5
-  - libopus=1.3.1
-  - libpng=1.6.39
-  - libssh2=1.11.1
-  - libstdcxx-ng=11.2.0
-  - libtheora=1.1.1
-  - libtiff=4.7.0
-  - libuuid=1.41.5
-  - libvorbis=1.3.7
-  - libvpx=1.13.1
-  - libwebp=1.3.2
-  - libwebp-base=1.3.2
-  - libxcb=1.17.0
-  - libxml2=2.13.8
-  - lz4-c=1.9.4
-  - ncurses=6.4
-  - openh264=2.1.1
-  - openjpeg=2.5.2
-  - openssl=3.0.17
-  - pcre2=10.42
-  - perl=5.40.2
-  - pip=25.1
-  - pixman=0.40.0
-  - pthread-stubs=0.3
-  - python=3.11.13
-  - readline=8.2
-  - setuptools=78.1.1
-  - sqlite=3.45.3
-  - tesseract=5.2.0
-  - tk=8.6.14
-  - wheel=0.45.1
-  - xorg-libx11=1.8.12
-  - xorg-libxau=1.0.12
-  - xorg-libxdmcp=1.1.5
-  - xorg-libxext=1.3.6
-  - xorg-libxrender=0.9.12
-  - xorg-xorgproto=2024.1
-  - xz=5.6.4
-  - zlib=1.2.13
-  - zstd=1.5.6
+  - _libgcc_mutex=0.1=main
+  - _openmp_mutex=5.1=1_gnu
+  - aom=3.6.0=h6a678d5_0
+  - bzip2=1.0.8=h5eee18b_6
+  - c-ares=1.19.1=h5eee18b_0
+  - ca-certificates=2025.7.15=h06a4308_0
+  - cairo=1.16.0=he5ede1b_6
+  - curl=8.12.1=h251f7ec_0
+  - dav1d=1.2.1=h5eee18b_0
+  - expat=2.7.1=h6a678d5_0
+  - ffmpeg=6.1.1=h2a67f75_3
+  - fontconfig=2.14.1=h55d465d_3
+  - freetype=2.13.3=h4a9f257_0
+  - gettext=0.21.0=hedfda30_2
+  - giflib=5.2.2=h5eee18b_0
+  - git=2.45.2=pl5402h72990fb_2
+  - graphite2=1.3.14=h295c915_1
+  - harfbuzz=10.2.0=hdfddeaa_1
+  - icu=73.1=h6a678d5_0
+  - jpeg=9e=h5eee18b_3
+  - krb5=1.20.1=h143b758_1
+  - lame=3.100=h7b6447c_0
+  - ld_impl_linux-64=2.40=h12ee557_0
+  - leptonica=1.82.0=hfdeec58_3
+  - lerc=4.0.0=h6a678d5_0
+  - libarchive=3.7.7=hfab0078_0
+  - libcurl=8.12.1=hc9e6f67_0
+  - libdeflate=1.22=h5eee18b_0
+  - libedit=3.1.20230828=h5eee18b_0
+  - libev=4.33=h7f8727e_1
+  - libffi=3.4.4=h6a678d5_1
+  - libgcc-ng=11.2.0=h1234567_1
+  - libglib=2.84.2=h37c7471_0
+  - libgomp=11.2.0=h1234567_1
+  - libiconv=1.16=h5eee18b_3
+  - libnghttp2=1.57.0=h2d74bed_0
+  - libogg=1.3.5=h27cfd23_1
+  - libopus=1.3.1=h5eee18b_1
+  - libpng=1.6.39=h5eee18b_0
+  - libssh2=1.11.1=h251f7ec_0
+  - libstdcxx-ng=11.2.0=h1234567_1
+  - libtheora=1.1.1=h7f8727e_3
+  - libtiff=4.7.0=hde9077f_0
+  - libuuid=1.41.5=h5eee18b_0
+  - libvorbis=1.3.7=h7b6447c_0
+  - libvpx=1.13.1=h6a678d5_0
+  - libwebp=1.3.2=h9f374a3_1
+  - libwebp-base=1.3.2=h5eee18b_1
+  - libxcb=1.17.0=h9b100fa_0
+  - libxml2=2.13.8=hfdd30dd_0
+  - lz4-c=1.9.4=h6a678d5_1
+  - ncurses=6.4=h6a678d5_0
+  - openh264=2.1.1=h4ff587b_0
+  - openjpeg=2.5.2=h0d4d230_1
+  - openssl=3.0.17=h5eee18b_0
+  - pcre2=10.42=hebb0a14_1
+  - perl=5.40.2=0_h5eee18b_perl5
+  - pip=25.1=pyhc872135_2
+  - pixman=0.40.0=hb25bd0a_2
+  - pthread-stubs=0.3=h0ce48e5_1
+  - python=3.11.13=h1a3bd86_0
+  - readline=8.2=h5eee18b_0
+  - setuptools=78.1.1=py311h06a4308_0
+  - sqlite=3.45.3=h5eee18b_0
+  - tesseract=5.2.0=h6a678d5_2
+  - tk=8.6.14=h993c535_1
+  - wheel=0.45.1=py311h06a4308_0
+  - xorg-libx11=1.8.12=h9b100fa_1
+  - xorg-libxau=1.0.12=h9b100fa_0
+  - xorg-libxdmcp=1.1.5=h9b100fa_0
+  - xorg-libxext=1.3.6=h9b100fa_0
+  - xorg-libxrender=0.9.12=h9b100fa_0
+  - xorg-xorgproto=2024.1=h5eee18b_1
+  - xz=5.6.4=h5eee18b_1
+  - zlib=1.2.13=hd233ad5_2
+  - zstd=1.5.6=hc292b87_0
   - pip:
       - aiohappyeyeballs==2.4.4
       - aiohttp==3.10.11
@@ -114,6 +116,8 @@ dependencies:
       - importlib-resources==6.4.5
       - ipython==9.4.0
       - ipython-pygments-lexers==1.1.1
+      - jax==0.4.33
+      - jaxlib==0.4.33
       - jedi==0.19.2
       - jinja2==3.1.6
       - kiwisolver==1.4.7
@@ -124,12 +128,13 @@ dependencies:
       - matplotlib==3.7.5
       - matplotlib-inline==0.1.7
       - mdurl==0.1.2
+      - ml-dtypes==0.5.3
       - moviepy==1.0.3
       - mpmath==1.3.0
       - multidict==6.1.0
       - narwhals==1.41.0
       - networkx==3.1
-      - numpy==1.24.4
+      - numpy==1.26.4
       - nvidia-cublas-cu12==12.1.3.1
       - nvidia-cuda-cupti-cu12==12.1.105
       - nvidia-cuda-nvrtc-cu12==12.1.105
@@ -144,6 +149,7 @@ dependencies:
       - nvidia-nvtx-cu12==12.1.105
       - omegaconf==2.3.0
       - opencv-python==4.11.0.86
+      - opt-einsum==3.4.0
       - packaging==24.2
       - pandas==2.0.3
       - parso==0.8.4
@@ -172,6 +178,7 @@ dependencies:
       - requests==2.32.3
       - rich==14.0.0
       - rootutils==1.0.7
+      - scipy==1.16.3
       - seaborn==0.13.2
       - sentry-sdk==2.29.1
       - setproctitle==1.3.6
@@ -196,4 +203,4 @@ dependencies:
       - xyzservices==2025.4.0
       - yarl==1.15.2
       - zipp==3.20.2
-prefix: /home/pfister/miniconda3/envs/gps
+prefix: /home/pfister/anaconda3/envs/gps
