@@ -1,3 +1,5 @@
+![Header](header.gif)
+
 # Setup
 
 Create a conda environment and install the dependencies:
@@ -7,21 +9,29 @@ conda env create -f environment.yml
 conda activate gps
 ```
 
+# Implemented Models
+
+The repository currently includes the following model families (configured via `configs/model/*.yaml` and implemented in `src/models/`):
+
+| Hydra config | Class | Description |
+|---|---|---|
+| `fm` | `FlowMatchingModel` | Conditional flow matching model for next-frame generation with ODE-based sampling. |
+| `si` | `StochasticInterpolation` | Stochastic interpolation model (supports Foellmer-style variants via config options). |
+| `dm` | `DiffusionModel` | Diffusion model with DDPM-style training and optional DDIM sampling at evaluation. |
+| `cm` | `ConsistencyModel` | Consistency model / consistency training. |
+| `add_fm` | `ADDFlowMatching` | Adversarial diffusion distillation for flow matching (teacher-student + discriminator). |
+
+Check `configs/train.yaml` and the `configs/model/` directory for all available configuration options.
+
 # Training
 
 Models are launched via Hydra. The main entry point is `src/train.py`.
 
-To train a specific model (e.g., Flow Matching):
+Example (Flow Matching):
+
 ```bash
 python src/train.py model=fm
 ```
-
-To enable Weights & Biases tracking:
-```bash
-python src/train.py tracking=wandb_train
-```
-
-Check `configs/train.yaml` and the `configs/model/` directory for all available configuration options.
 
 # Evaluation
 
@@ -36,7 +46,9 @@ You can also override the model or data configuration during evaluation if neede
 python src/eval.py model=dm ckpt_path=...
 ```
 
-# Notation
+# Tensor Dimension Notation
+
+Symbols used in tensor shape annotations in docstrings and assertions.
 
 | Symbol | Meaning |
 |---|---|
