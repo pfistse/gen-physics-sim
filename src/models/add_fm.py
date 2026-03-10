@@ -65,7 +65,9 @@ class ADDFlowMatching(BaseGenerativeModel):
 
         for _ in range(steps):
             t_vec = torch.full((B,), t.item(), device=x.device)
-            v_pred = model.net(torch.cat([cond_flat, x], dim=1), t_vec)
+            v_pred = model.net(torch.cat([cond_flat, x], dim=1), t_vec)[
+                :, -x.shape[1] :, :, :
+            ]
             x = x + v_pred * dt
             t = t + dt
         return x
@@ -176,7 +178,9 @@ class ADDFlowMatching(BaseGenerativeModel):
             t = indices.float() / self.num_student_steps
             t_exp = t.view(B, 1, 1, 1)
             x_t = (1 - t_exp) * noise + t_exp * x_teacher
-            v_pred = self.student.net(torch.cat([cond_flat, x_t], dim=1), t)
+            v_pred = self.student.net(torch.cat([cond_flat, x_t], dim=1), t)[
+                :, -x_t.shape[1] :, :, :
+            ]
             v_target = x_teacher - noise
             loss_distill = F.mse_loss(v_pred, v_target)
 

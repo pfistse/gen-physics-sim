@@ -12,7 +12,7 @@ sim_fields: ${data.sim_fields}
 sim_params: ${data.sim_params}
 
 # Model Specific Hyperparams
-ckpt_path: "/home/spfister/gen-physics-sim-wc/checkpoints/fm/epoch241/last.ckpt"
+ckpt_path: "/home/spfister/gen-physics-sim-wc/checkpoints/fm2/epoch300/last-ema.ckpt" #"/home/spfister/gen-physics-sim-wc/ckpts_inc/fm/e1349/last-ema.ckpt"
 gen_rate: 15
 num_student_steps: 1
 num_teacher_steps: 20

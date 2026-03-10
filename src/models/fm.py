@@ -5,8 +5,11 @@ from typing import List, Optional, Dict
 import logging
 
 from models.base import BaseGenerativeModel
-from metrics.distributed import create_mean_std_rel_err_steps_metric
-from metrics.rank0 import create_std_steps_metric
+from metrics.distributed import (
+    create_enstr_err_steps_metric,
+    create_mean_std_err_steps_metric,
+)
+from metrics.rank0 import create_std_steps_metric, create_enstrophy_flow_metric
 
 logger = logging.getLogger(__name__)
 
@@ -40,9 +43,11 @@ class FlowMatchingModel(BaseGenerativeModel):
         }[self.integrator]
 
         self.register_distributed_metric(
-            create_mean_std_rel_err_steps_metric(unbiased=False)
+            create_mean_std_err_steps_metric(unbiased=False)
         )
+        self.register_distributed_metric(create_enstr_err_steps_metric(unbiased=False))
         self.register_rank0_metric(create_std_steps_metric())
+        self.register_rank0_metric(create_enstrophy_flow_metric())
 
     def phi_t(self, x_0, x_1, t):
         """Interpolate x0→x1 at t.
@@ -64,7 +69,7 @@ class FlowMatchingModel(BaseGenerativeModel):
         return x_1 - (1 - self.sigma_min) * x_0
 
     @staticmethod
-    def _integrate_euler(f, x_0, t_0, t_1, dt):
+    def _integrate_euler(f, x_0, t_0, t_1, dt, return_steps: bool = False):
         """Euler ODE solver."""
         t_0 = torch.as_tensor(t_0, dtype=x_0.dtype, device=x_0.device)
         t_1 = torch.as_tensor(t_1, dtype=x_0.dtype, device=x_0.device)
@@ -73,14 +78,19 @@ class FlowMatchingModel(BaseGenerativeModel):
         with torch.no_grad():
             t = t_0
             x = x_0
+            steps = [] if return_steps else None
             while t < t_1:
                 dt = torch.min(abs(dt), abs(t_1 - t))
                 x, t = x + dt * f(t, x), t + dt
+                if steps is not None:
+                    steps.append(x.detach().clone())
 
-        return x
+        if steps is None:
+            return x
+        return x, torch.stack(steps, dim=0)
 
     @staticmethod
-    def _integrate_rk4(f, x_0, t_0, t_1, dt):
+    def _integrate_rk4(f, x_0, t_0, t_1, dt, return_steps: bool = False):
         """RK4 ODE solver."""
         t_0 = torch.as_tensor(t_0, dtype=x_0.dtype, device=x_0.device)
         t_1 = torch.as_tensor(t_1, dtype=x_0.dtype, device=x_0.device)
@@ -89,6 +99,7 @@ class FlowMatchingModel(BaseGenerativeModel):
         with torch.no_grad():
             t = t_0.clone()
             x = x_0.clone()
+            steps = [] if return_steps else None
             while t < t_1:
                 step = torch.min(dt, t_1 - t)
                 k1 = step * f(t, x)
@@ -97,8 +108,12 @@ class FlowMatchingModel(BaseGenerativeModel):
                 k4 = step * f(t + step, x + k3)
                 x.add_((k1 + 2 * k2 + 2 * k3 + k4) / 6)
                 t.add_(step)
+                if steps is not None:
+                    steps.append(x.detach().clone())
 
-        return x
+        if steps is None:
+            return x
+        return x, torch.stack(steps, dim=0)
 
     def compute_loss(self, target: torch.Tensor, cond: torch.Tensor, debug: bool = False):
         """Compute training loss.
@@ -121,7 +136,7 @@ class FlowMatchingModel(BaseGenerativeModel):
         v_t = self.v_t(x_0, x_1, t)
 
         x_in = torch.cat([cond_flat, x_t], dim=1)
-        v_pred = self.net(x_in, t)
+        v_pred = self.net(x_in, t)[:, -x_t.shape[1] :, :, :]
 
         loss = F.mse_loss(v_pred, v_t)
 
@@ -129,12 +144,13 @@ class FlowMatchingModel(BaseGenerativeModel):
             return loss, v_pred.unsqueeze(1), v_t.unsqueeze(1), None, cond_flat.unsqueeze(1)
         return loss
 
-    def generate_samples(self, cond: torch.Tensor, num_steps: int):
+    def generate_samples(self, cond: torch.Tensor, num_steps: int, return_steps: bool = False):
         """Sample next frame.
 
         cond: [B, S, C, H, W]
         """
         assert cond.ndim == 5, f"cond: [B,S,C,H,W], got {tuple(cond.shape)}"
+        assert num_steps >= 1, "num_steps >= 1"
 
         B, S, C, H, W = cond.shape
         cond_flat = cond.view(B, S * C, H, W)
@@ -147,8 +163,11 @@ class FlowMatchingModel(BaseGenerativeModel):
             def wrapper(t_scalar: float, x_t: torch.Tensor):
                 t_vec = torch.full((x_t.shape[0],), float(t_scalar), dtype=x_t.dtype, device=x_t.device)
                 x_in = torch.cat([cond_flat, x_t], dim=1)
-                v_pred = self.net(x_in, t_vec)
+                v_pred = self.net(x_in, t_vec)[:, -x_t.shape[1] :, :, :]
                 return v_pred
 
-            x_1 = self._integrate(wrapper, x, 0.0, 1.0, dt)
-            return x_1.unsqueeze(1)
+            result = self._integrate(wrapper, x, 0.0, 1.0, dt, return_steps=return_steps)
+            if return_steps:
+                x_1, steps = result
+                return x_1.unsqueeze(1), steps
+            return result.unsqueeze(1)

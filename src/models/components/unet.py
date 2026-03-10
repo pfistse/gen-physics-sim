@@ -18,34 +18,34 @@ def cosine_beta_schedule(timesteps, s=0.008):
     alphas_cumprod = torch.cos(((x / timesteps) + s) / (1 + s) * torch.pi * 0.5) ** 2
     alphas_cumprod = alphas_cumprod / alphas_cumprod[0]
     betas = 1 - (alphas_cumprod[1:] / alphas_cumprod[:-1])
-    return torch.clip(betas, 0.0001, 0.9999)
+    return torch.clip(betas, 0.0001, 0.999)
 
 
 def linear_beta_schedule(timesteps):
     """Linear schedule scaled with timesteps."""
-    beta_start = 0.0001 * (1000 / timesteps)
-    beta_end = 0.02 * (1000 / timesteps)
+    scale = 1000 / timesteps
+    beta_start = 0.0001
+    beta_end = 0.02 * scale
     betas = torch.linspace(beta_start, beta_end, timesteps)
-    return torch.clip(betas, 0.0001, 0.9999)
+    return torch.clip(betas, 0.0001, 0.999)
+
+# def quadratic_beta_schedule(timesteps):
+#     """Quadratic schedule scaled with timesteps."""
+#     assert timesteps >= 20, "timesteps >= 20"
+#     beta_start = 0.0001 * (1000 / timesteps)
+#     beta_end = 0.02 * (1000 / timesteps)
+#     betas = torch.linspace(beta_start**0.5, beta_end**0.5, timesteps) ** 2
+#     return torch.clip(betas, 0.0001, 0.9999)
 
 
-def quadratic_beta_schedule(timesteps):
-    """Quadratic schedule scaled with timesteps."""
-    assert timesteps >= 20, "timesteps >= 20"
-    beta_start = 0.0001 * (1000 / timesteps)
-    beta_end = 0.02 * (1000 / timesteps)
-    betas = torch.linspace(beta_start**0.5, beta_end**0.5, timesteps) ** 2
-    return torch.clip(betas, 0.0001, 0.9999)
-
-
-def sigmoid_beta_schedule(timesteps):
-    """Sigmoid schedule scaled with timesteps."""
-    assert timesteps >= 20, "timesteps >= 20"
-    beta_start = 0.0001 * (1000 / timesteps)
-    beta_end = 0.02 * (1000 / timesteps)
-    betas = torch.linspace(-6, 6, timesteps)
-    betas = torch.sigmoid(betas) * (beta_end - beta_start) + beta_start
-    return torch.clip(betas, 0.0001, 0.9999)
+# def sigmoid_beta_schedule(timesteps):
+#     """Sigmoid schedule scaled with timesteps."""
+#     assert timesteps >= 20, "timesteps >= 20"
+#     beta_start = 0.0001 * (1000 / timesteps)
+#     beta_end = 0.02 * (1000 / timesteps)
+#     betas = torch.linspace(-6, 6, timesteps)
+#     betas = torch.sigmoid(betas) * (beta_end - beta_start) + beta_start
+#     return torch.clip(betas, 0.0001, 0.9999)
 
 
 def DEFAULT_INITIALIZER(x, scale=1.0):

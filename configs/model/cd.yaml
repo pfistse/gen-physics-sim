@@ -1,4 +1,9 @@
-_target_: models.si.StochasticInterpolation
+_target_: models.cd.ConsistencyDistillationModel
+_recursive_: false
+
+defaults:
+  - edm@pretrained_config
+  - _self_
 
 # Data Params
 dim: ${data.dim}
@@ -7,14 +12,9 @@ sim_fields: ${data.sim_fields}
 sim_params: ${data.sim_params}
 
 # Model Specific Hyperparams
-sigma_coef: 1
-beta_fn: "t^2"
-t_min_train: 0.0
-t_max_train: 0.999
-t_min_sampling: 0.0
-t_max_sampling: 0.999
-foellmer_process: True
-foellmer_coef: 1
+ckpt_path: "/home/spfister/gen-physics-sim-wc/checkpoints/edm/e661/last-ema.ckpt"
+ema_rate: 0.999
+num_student_steps: 100
 
 # Network
 net:
@@ -22,11 +22,12 @@ net:
   in_channels: ${mul:${data.num_channels},${add:${data.ctx_len},1}}
   out_channels: ${data.num_channels}
   # out_channels: ${mul:${data.num_channels},${add:${data.ctx_len},1}}
+
   hid_channels: 64
   ch_multipliers: [1, 2, 2, 2]
   num_res_blocks: 2
   apply_attn: [false, true, false, false]
-  drop_rate: 0.1
+  drop_rate: 0.0
   resample_with_conv: true
 
 # Optimizer
@@ -34,5 +35,5 @@ lr: 1e-4
 weight_decay: 0.0
 
 # Evaluation/Inference
-num_steps_eval: 100
+num_steps_eval: 1
 eval_config: ${evaluation}

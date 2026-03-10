@@ -9,7 +9,13 @@ import copy
 import wandb
 import rootutils
 from models.base import BaseGenerativeModel
-from metrics.distributed import create_mean_std_rel_err_steps_metric
+from metrics.distributed import (
+    create_cm_cons_err_gap_metric,
+    create_cm_enstr_err_ssched_metric,
+    create_cm_mean_std_err_ssched_metric,
+    create_enstr_err_steps_metric,
+    create_mean_std_err_steps_metric,
+)
 from metrics.rank0 import create_std_steps_metric
 
 rootutils.setup_root(__file__, indicator=".project-root", pythonpath=True)
@@ -65,8 +71,12 @@ class ConsistencyModel(BaseGenerativeModel):
         self._initialize_target_model()
 
         self.register_distributed_metric(
-            create_mean_std_rel_err_steps_metric(unbiased=False)
+            create_mean_std_err_steps_metric(unbiased=False)
         )
+        self.register_distributed_metric(create_enstr_err_steps_metric(unbiased=False))
+        self.register_distributed_metric(create_cm_mean_std_err_ssched_metric())
+        self.register_distributed_metric(create_cm_enstr_err_ssched_metric())
+        self.register_distributed_metric(create_cm_cons_err_gap_metric())
         self.register_rank0_metric(create_std_steps_metric())
 
     def _create_target_model(self):
@@ -118,10 +128,11 @@ class ConsistencyModel(BaseGenerativeModel):
         t = torch.clamp(t, min=self.sigma_min, max=self.sigma_max)
         return t
 
-    def _update_ema_and_steps(self):
+    def _update_ema_and_steps(self, epoch: Optional[int] = None):
         """Steps at current training iteration."""
 
-        k, K = self.trainer.current_epoch, self.num_epochs
+        k = self.current_epoch if epoch is None else epoch
+        K = self.num_epochs
         s0, s1 = self.steps_start, self.steps_max
         mu0 = self.ema_rate_start
 
@@ -131,6 +142,10 @@ class ConsistencyModel(BaseGenerativeModel):
 
         self.num_steps = min(int(N), self.steps_max)
         self.ema_rate = mu
+
+    @property
+    def sigmas(self) -> torch.Tensor:
+        return self.get_noise_schedule(self.num_steps).flip(0).to(self.device)
 
     def c_skip(self, sigma):
         """Skip-scale."""
@@ -169,7 +184,7 @@ class ConsistencyModel(BaseGenerativeModel):
         x_in = torch.cat([cond, x * c_in[:, None, None, None]], dim=1)
 
         model = self.target_model if use_target else self.net
-        f_theta = model(x_in, self.c_noise(sigma))
+        f_theta = model(x_in, self.c_noise(sigma))[:, -x.shape[1] :, :, :]
 
         return x * c_skip[:, None, None, None] + f_theta * c_out[:, None, None, None]
 
@@ -219,7 +234,9 @@ class ConsistencyModel(BaseGenerativeModel):
 
             f_student = self.consistency_function(x_t, sig_t, cond, use_target=False)
 
-            loss = torch.nn.functional.mse_loss(f_student[active], f_teacher[active])
+            loss = torch.nn.functional.huber_loss(
+                f_student[active], f_teacher[active], delta=1.0
+            )
             total_loss += loss
 
             x_est = f_student.detach()
@@ -248,7 +265,9 @@ class ConsistencyModel(BaseGenerativeModel):
         T = self.num_steps
         t_schedule = self.get_noise_schedule(T).to(device)
 
-        indices = torch.linspace(T, 0, num_steps, dtype=torch.long, device=device)
+        indices = torch.linspace(T, 0, num_steps + 1, device=device)[:-1].round().to(
+            torch.long
+        )
 
         context = torch.enable_grad if requires_grad else torch.no_grad
         with context():
@@ -294,4 +313,8 @@ class ConsistencyModel(BaseGenerativeModel):
         self._update_ema_and_steps()
 
     def setup(self, stage):
-        self._update_ema_and_steps()
+        self._update_ema_and_steps(epoch=self.current_epoch)
+
+    def on_load_checkpoint(self, checkpoint):
+        epoch = int(checkpoint.get("epoch", 0))
+        self._update_ema_and_steps(epoch=epoch)

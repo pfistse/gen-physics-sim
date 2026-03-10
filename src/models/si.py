@@ -5,19 +5,28 @@ from torch import nn
 
 from models.base import BaseGenerativeModel
 from metrics.distributed import (
-    create_mean_std_rel_err_steps_metric,
+    create_enstr_err_steps_metric,
+    create_mean_std_err_steps_metric,
     create_std_rel_err_grid_metric,
 )
+from metrics.rank0 import create_enstrophy_flow_metric
 
 
 class Interpolant:
     """Sigma-scaled interpolant as defined in the Foellmer baseline."""
 
-    def __init__(self, sigma_coef: float, beta_fn: str, foellmer_process: bool) -> None:
+    def __init__(
+        self,
+        sigma_coef: float,
+        beta_fn: str,
+        foellmer_process: bool,
+        foellmer_coef: float,
+    ) -> None:
         assert beta_fn in {"t", "t^2"}, "beta_fn must be 't' or 't^2'"
         self.sigma_coef = sigma_coef
         self.beta_fn = beta_fn
         self.foellmer_process = foellmer_process
+        self.foellmer_coef = foellmer_coef
 
     @staticmethod
     def _expand(t: torch.Tensor) -> torch.Tensor:
@@ -61,6 +70,7 @@ class Interpolant:
         g2 = sigma**2 + lam * (g_F**2 - sigma**2)
         g2 = g2.clamp_min(0.0)
         g = g2.sqrt()
+        g *= self.foellmer_coef
         return self._expand(g)
 
     def evaluate(
@@ -75,7 +85,7 @@ class Interpolant:
 
         at, bt = 1.0 - t, self._beta(t)
         adot, bdot = -torch.ones_like(t), self._beta_dot(t)
-        st = self.sigma_coef * at
+        st = self.sigma_coef * (1.0 - t)
         sdot = -self.sigma_coef * torch.ones_like(t)
         root_t = torch.sqrt(t.clamp_min(0.0))
 
@@ -108,6 +118,7 @@ class StochasticInterpolation(BaseGenerativeModel):
         t_min_sampling: float = 0.0,
         t_max_sampling: float = 0.999,
         foellmer_process: bool = False,
+        foellmer_coef: float = 1.0,
         lr: float = 1e-4,
         weight_decay: float = 0.0,
         num_steps_eval: Optional[int] = None,
@@ -123,12 +134,15 @@ class StochasticInterpolation(BaseGenerativeModel):
             sigma_coef=self.sigma_coef,
             beta_fn=self.beta_fn,
             foellmer_process=self.foellmer_process,
+            foellmer_coef=self.foellmer_coef,
         )
 
         self.register_distributed_metric(
-            create_mean_std_rel_err_steps_metric(unbiased=True)
+            create_mean_std_err_steps_metric(unbiased=True)
         )
+        self.register_distributed_metric(create_enstr_err_steps_metric(unbiased=True))
         self.register_distributed_metric(create_std_rel_err_grid_metric(unbiased=True))
+        self.register_rank0_metric(create_enstrophy_flow_metric())
 
     def compute_loss(self, target: torch.Tensor, cond: torch.Tensor):
         """Compute Foellmer drift loss.
@@ -153,7 +167,9 @@ class StochasticInterpolation(BaseGenerativeModel):
         noise = torch.randn_like(x0)
 
         xt, drift_target = self.interpolant.evaluate(x0=x0, x1=x1, t=t, noise=noise)
-        drift_pred = self.net(torch.cat([cond_flat, xt], dim=1), t)
+        drift_pred = self.net(torch.cat([cond_flat, xt], dim=1), t)[
+            :, -xt.shape[1] :, :, :
+        ]
 
         loss = (drift_pred - drift_target).square().sum(dim=(1, 2, 3)).mean()
         return loss
@@ -164,12 +180,14 @@ class StochasticInterpolation(BaseGenerativeModel):
         cond: torch.Tensor,
         num_steps: int,
         g_coef: Optional[float] = None,
+        return_steps: bool = False,
     ):
         """Sample next frame.
 
         cond: [B, S, C, H, W]
         """
         assert cond.ndim == 5, f"cond: [B,S,C,H,W], got {tuple(cond.shape)}"
+        assert num_steps >= 1, "num_steps >= 1"
 
         B, S, C, H, W = cond.shape
         cond_flat = cond.view(B, S * C, H, W)
@@ -184,11 +202,15 @@ class StochasticInterpolation(BaseGenerativeModel):
         x0 = cond[:, -1]
         xt = x0.clone()
 
+        steps = [] if return_steps else None
+
         for i, (t0, t1) in enumerate(zip(ts[:-1], ts[1:])):
             dt = (t1 - t0).to(cond.dtype)
             t = torch.full((B,), float(t0), device=cond.device, dtype=cond.dtype)
 
-            drift_ref = self.net(torch.cat([cond_flat, xt], dim=1), t)
+            drift_ref = self.net(torch.cat([cond_flat, xt], dim=1), t)[
+                :, -xt.shape[1] :, :, :
+            ]
             sigma_t = self.interpolant.sigma(t).to(xt.dtype)  # [B,1,1,1]
             w = torch.randn_like(xt)
 
@@ -212,14 +234,18 @@ class StochasticInterpolation(BaseGenerativeModel):
 
                 score = A_w * (beta_w * drift_ref - c)
 
-                g_t = self.interpolant.g_s(t, g_coef=g_coef).to(xt.dtype)
+                g_t = self.interpolant.g_s(t, g_coef=g_coef).to(xt.dtype)   
                 drift = drift_ref + 0.5 * (g_t**2 - sigma_t**2) * score
 
                 xt = xt + drift * dt + g_t * w * dt.sqrt()
             else:
-                xt = xt + drift_ref * dt + sigma_t * w * dt.sqrt()
+                xt = xt + drift_ref * dt  + sigma_t * w * dt.sqrt()
+            if steps is not None:
+                steps.append(xt.detach().clone())
 
-        return xt.unsqueeze(1)
+        if steps is None:
+            return xt.unsqueeze(1)
+        return xt.unsqueeze(1), torch.stack(steps, dim=0)
 
 
 __all__ = ["StochasticInterpolation"]

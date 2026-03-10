@@ -15,6 +15,7 @@ net:
   _target_: models.components.unet.UNetWrapper
   in_channels: ${mul:${data.num_channels},${add:${data.ctx_len},1}}
   out_channels: ${data.num_channels}
+  # out_channels: ${mul:${data.num_channels},${add:${data.ctx_len},1}}
 
   hid_channels: 64
   ch_multipliers: [1, 2, 2, 2]

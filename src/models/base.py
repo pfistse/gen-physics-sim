@@ -1,3 +1,4 @@
+import sys
 from typing import Optional, List, Tuple
 
 import torch
@@ -7,13 +8,18 @@ from pytorch_lightning.utilities.rank_zero import rank_zero_only
 from rich.progress import Progress, TaskID
 from rich.console import Console
 
-from metrics.distributed import DistributedMetric, create_mean_std_metric
+from metrics.distributed import (
+    DistributedMetric,
+    create_enstrophy_metric,
+    create_mean_std_metric,
+    create_rollout_mse_dist_metric,
+    create_rollout_var_dist_metric,
+)
 from metrics.rank0 import (
     RankZeroMetric,
-    create_mse_metric,
-    create_enstrophy_metric,
     create_variance_metric,
-    create_video_metric,
+    create_nstep_pred_metric,
+    create_vort_video_metric,
 )
 
 
@@ -24,11 +30,14 @@ class BaseGenerativeModel(pl.LightningModule):
         super().__init__()
         self._distributed_metrics: List[DistributedMetric] = []
         self._rank0_metrics: List[RankZeroMetric] = []
+        self._dist_progress = None
         self.register_distributed_metric(create_mean_std_metric())
-        self.register_rank0_metric(create_mse_metric())
-        self.register_rank0_metric(create_enstrophy_metric())
+        self.register_distributed_metric(create_enstrophy_metric())
+        self.register_distributed_metric(create_rollout_mse_dist_metric())
+        self.register_distributed_metric(create_rollout_var_dist_metric())
+        self.register_rank0_metric(create_nstep_pred_metric())
         self.register_rank0_metric(create_variance_metric())
-        self.register_rank0_metric(create_video_metric())
+        self.register_rank0_metric(create_vort_video_metric())
 
     def generate_samples(self, cond: torch.Tensor, num_steps: int = 1, **kwargs):
         raise NotImplementedError
@@ -153,8 +162,9 @@ class BaseGenerativeModel(pl.LightningModule):
     def eval_step_distributed(self, batch, batch_idx):
         """Per-rank mean/std evaluation using cached simulator data."""
 
+        progress = self._dist_progress if self.trainer.is_global_zero else None
         for metric in self._distributed_metrics:
-            metric.collect_step(self, batch)
+            metric.collect_step(self, batch, progress=progress)
 
         return None
 
@@ -162,19 +172,45 @@ class BaseGenerativeModel(pl.LightningModule):
     def eval_step_rank0(self):
         """Shared rank0-only logging tasks."""
 
-        with Progress(console=Console()) as progress:
-            for metric in self._rank0_metrics:
-                metric.run(self, progress)
+        enabled_metrics = [m for m in self._rank0_metrics if m.enabled_fn(self)]
+        if not enabled_metrics:
+            return None
+
+        use_progress = any(getattr(metric, "use_progress", False) for metric in enabled_metrics)
+        if not use_progress:
+            for metric in enabled_metrics:
+                metric.run(self, None)
+            return None
+
+        is_tty = sys.stdout.isatty()
+        console = Console(stderr=True, force_terminal=is_tty, no_color=not is_tty)
+        with Progress(console=console, disable=not is_tty) as progress:
+            for metric in enabled_metrics:
+                metric.run(self, progress if getattr(metric, "use_progress", False) else None)
 
         return None
 
     def eval_setup(self):
+        self._dist_progress = None
+        if self.trainer.is_global_zero:
+            use_progress = any(
+                getattr(metric, "use_progress", False) and metric.enabled_fn(self)
+                for metric in self._distributed_metrics
+            )
+            if use_progress:
+                is_tty = sys.stdout.isatty()
+                console = Console(stderr=True, force_terminal=is_tty, no_color=not is_tty)
+                self._dist_progress = Progress(console=console, disable=not is_tty)
+                self._dist_progress.start()
         for metric in self._distributed_metrics:
             metric.reset()
 
     def eval_finalize(self):
         for metric in self._distributed_metrics:
             metric.finalize(self)
+        if self._dist_progress is not None:
+            self._dist_progress.stop()
+            self._dist_progress = None
 
     def register_distributed_metric(self, metric: DistributedMetric) -> None:
         self._distributed_metrics.append(metric)

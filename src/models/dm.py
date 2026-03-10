@@ -13,14 +13,15 @@ from utils.wandb import fig_to_image
 from models.components.unet import (
     linear_beta_schedule,
     cosine_beta_schedule,
-    quadratic_beta_schedule,
-    sigmoid_beta_schedule,
 )
 
 
 from models.base import BaseGenerativeModel
-from metrics.distributed import create_mean_std_rel_err_steps_metric
-from metrics.rank0 import create_denoising_metric
+from metrics.distributed import (
+    create_enstr_err_steps_metric,
+    create_mean_std_err_steps_metric,
+)
+from metrics.rank0 import create_denoising_metric, create_enstrophy_flow_metric
 
 logger = logging.getLogger(__name__)
 
@@ -39,7 +40,7 @@ class DiffusionModel(BaseGenerativeModel):
         beta_schedule: str = "linear",
         lr: float = 1e-4,
         weight_decay: float = 0.0,
-        ddim_sampling: bool = False,
+        eta: float = 1.0,
         num_steps_eval: int = 50,
         eval_config: Optional[Dict] = None,
     ):
@@ -52,8 +53,6 @@ class DiffusionModel(BaseGenerativeModel):
         schedule_fns = {
             "linear": linear_beta_schedule,
             "cosine": cosine_beta_schedule,
-            "quadratic": quadratic_beta_schedule,
-            "sigmoid": sigmoid_beta_schedule,
         }
         betas = schedule_fns[self.beta_schedule](self.timesteps)
         alphas = 1.0 - betas
@@ -79,9 +78,11 @@ class DiffusionModel(BaseGenerativeModel):
         )
         self.register_buffer("posterior_var", posterior_var)
         self.register_rank0_metric(create_denoising_metric())
+        self.register_rank0_metric(create_enstrophy_flow_metric())
         self.register_distributed_metric(
-            create_mean_std_rel_err_steps_metric(unbiased=False)
+            create_mean_std_err_steps_metric(unbiased=False)
         )
+        self.register_distributed_metric(create_enstr_err_steps_metric(unbiased=False))
 
     def compute_loss(
         self, target: torch.Tensor, cond: torch.Tensor, debug: bool = False
@@ -111,24 +112,26 @@ class DiffusionModel(BaseGenerativeModel):
         x_t_cond = cond_flat
 
         model_in = torch.cat([x_t_cond, x_t], dim=1)
-        eps_pred = self.net(model_in, t)
+        eps_pred = self.net(model_in, t)[:, -x_t.shape[1] :, :, :]
         loss = F.mse_loss(eps_pred, noise_target)
 
         if debug:
             return loss, eps_pred, noise_target
         return loss
 
-    def generate_samples(self, cond: torch.Tensor, num_steps: int):
+    def generate_samples(
+        self,
+        cond: torch.Tensor,
+        num_steps: int,
+        return_steps: bool = False,
+        debug: bool = False,
+    ):
         """Sample the next frame from ``cond``.
 
         cond: [B, S, C, H, W]
         return: [B, 1, C, H, W]
         """
-        # eta=0 corresponds to DDIM, eta=1 corresponds to DDPM
-        eta = 0.0 if self.ddim_sampling else 1.0
-
-        if num_steps != self.timesteps:
-            assert self.ddim_sampling, "num_steps!=timesteps requires ddim_sampling"
+        assert num_steps >= 1, "num_steps >= 1"
 
         B, S, C, H, W = cond.shape
         cond_flat = cond.view(B, S * C, H, W)
@@ -138,12 +141,15 @@ class DiffusionModel(BaseGenerativeModel):
             self.timesteps - 1, 0, num_steps, dtype=torch.long, device=cond.device
         )
 
+        record_steps = return_steps or debug
+        steps = [] if record_steps else None
+
         for i, t_idx in enumerate(t_range):
             t_idx = int(t_idx.item())
             t = torch.full((B,), t_idx / (self.timesteps - 1), device=cond.device)
 
             model_in = torch.cat([cond_flat, x], dim=1)
-            eps_pred = self.net(model_in, t)
+            eps_pred = self.net(model_in, t)[:, -x.shape[1] :, :, :]
 
             alpha_bar = self.alphas_cumprod[t_idx]
 
@@ -153,7 +159,7 @@ class DiffusionModel(BaseGenerativeModel):
             else:
                 alpha_bar_prev = torch.tensor(1.0, device=cond.device)
 
-            sigma_t = eta * torch.sqrt(
+            sigma_t = self.eta * torch.sqrt(
                 (1 - alpha_bar_prev)
                 / (1 - alpha_bar)
                 * (1 - alpha_bar / alpha_bar_prev)
@@ -163,12 +169,16 @@ class DiffusionModel(BaseGenerativeModel):
 
             dir_xt = torch.sqrt(1 - alpha_bar_prev - sigma_t**2) * eps_pred
 
-            noise = torch.randn_like(x) if eta > 0 else 0.0
+            noise = torch.randn_like(x) if self.eta > 0 else 0.0
 
             x = torch.sqrt(alpha_bar_prev) * pred_x0 + dir_xt + sigma_t * noise
+            if steps is not None:
+                steps.append(x.detach())
 
         samples = x.unsqueeze(1)
-        return samples
+        if steps is None:
+            return samples
+        return samples, torch.stack(steps, dim=0)
 
     def on_train_start(self):
         """Log noise schedules to W&B at the start of training."""

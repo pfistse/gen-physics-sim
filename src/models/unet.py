@@ -57,7 +57,7 @@ class UNet(BaseGenerativeModel):
         noise = torch.randn_like(target_frame)
         x_in = torch.cat([cond_flat, noise], dim=1)
 
-        pred = self.net(x_in, t)
+        pred = self.net(x_in, t)[:, -noise.shape[1] :, :, :]
         loss = F.mse_loss(pred, target_frame)
         return loss
 
@@ -78,5 +78,5 @@ class UNet(BaseGenerativeModel):
         noise = torch.randn((B, C, H, W), device=cond.device)
         x_in = torch.cat([cond_flat, noise], dim=1)
 
-        pred = self.net(x_in, t)
+        pred = self.net(x_in, t)[:, -noise.shape[1] :, :, :]
         return pred.unsqueeze(1)

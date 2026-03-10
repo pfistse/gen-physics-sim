@@ -7,7 +7,7 @@ sim_fields: ${data.sim_fields}
 sim_params: ${data.sim_params}
 
 # Model Specific Hyperparams
-timesteps: 100
+timesteps: 500 #500
 beta_schedule: "linear"
 
 # Network
@@ -15,6 +15,7 @@ net:
   _target_: models.components.unet.UNetWrapper
   in_channels: ${mul:${data.num_channels},${add:${data.ctx_len},1}}
   out_channels: ${data.num_channels}
+  # out_channels: ${mul:${data.num_channels},${add:${data.ctx_len},1}}
   hid_channels: 64
   ch_multipliers: [1, 2, 2, 2]
   num_res_blocks: 2
@@ -27,6 +28,6 @@ lr: 1e-4
 weight_decay: 0.0
 
 # Evaluation/Inference
-ddim_sampling: true
+eta: 0 # 0=deterministic, 1=DDPM
 num_steps_eval: 100 # automatically uses DDIM sampling if smaller than timesteps
 eval_config: ${evaluation}

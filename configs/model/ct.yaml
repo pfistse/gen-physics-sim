@@ -1,5 +1,5 @@
-_target_: models.cm.ConsistencyModel
-slug: cm
+_target_: models.ct.ConsistencyModel
+slug: ct
 
 # Data Params
 dim: ${data.dim}
@@ -25,12 +25,13 @@ net:
   _target_: models.components.unet.UNetWrapper
   in_channels: ${mul:${data.num_channels},${add:${data.ctx_len},1}}
   out_channels: ${data.num_channels}
+  # out_channels: ${mul:${data.num_channels},${add:${data.ctx_len},1}}
 
   hid_channels: 64
   ch_multipliers: [1, 2, 2, 2]
   num_res_blocks: 2
   apply_attn: [false, true, false, false]
-  drop_rate: 0.1
+  drop_rate: 0.0 # important for consistency constrain
   resample_with_conv: true
 
 # Optimizer
